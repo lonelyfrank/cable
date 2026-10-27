@@ -107,6 +107,7 @@ async fn pin_flow_wrong_then_right_and_cancel_at_prompt() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn cancel_during_large_transfer_stops_io_and_cleans_up() {
+    let _big = BIG.lock().await;
     let mut r = Rig::new();
     let (a, b) = (r.engine("a").await, r.engine("b").await);
     pair(&a, &b).await;
@@ -126,6 +127,7 @@ async fn cancel_during_large_transfer_stops_io_and_cleans_up() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn receiver_cancel_stops_sender() {
+    let _big = BIG.lock().await;
     let mut r = Rig::new();
     let (a, b) = (r.engine("a").await, r.engine("b").await);
     pair(&a, &b).await;
@@ -136,7 +138,7 @@ async fn receiver_cancel_stops_sender() {
     wait_for(|| async { (b.receiver.snapshot().0[0]["byte"].as_u64().unwrap() > 1024 * 1024).then_some(()) }, 20.0).await;
     assert!(b.receiver.annulla(req["id"].as_str().unwrap()));
     let j = wait_job(&a, &jid, 20.0).await;
-    assert!(["errore", "annullato"].contains(&j["stato"].as_str().unwrap()), "{j}");
+    assert!(["errore", "annullato", "interrotto"].contains(&j["stato"].as_str().unwrap()), "{j}");
     wait_for(|| async { listing(&inbox(&b)).is_empty().then_some(()) }, 10.0).await;
     r.stop_all().await;
 }
@@ -262,6 +264,7 @@ async fn no_auto_accept_even_with_favorite_fingerprint() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn big_transfer_keeps_memory_bounded_and_duplicates_are_not_overwritten() {
+    let _big = BIG.lock().await;
     let mut r = Rig::new();
     let (a, b) = (r.engine("a").await, r.engine("b").await);
     pair(&a, &b).await;
@@ -363,7 +366,7 @@ async fn favorites_reset_identity_and_port_handling() {
     std::fs::write(inbox(&a).join("mio.txt"), "x").unwrap();
     let bk = a.ripristina_impostazioni();
     assert!(std::path::Path::new(&bk).exists());
-    assert_eq!(a.sh.settings.str("nome_pc"), "Fedora Pixel Hub");
+    assert_eq!(a.sh.settings.str("nome_pc"), pixelhub_engine::settings::default_name());
     assert!(!a.snapshot()["pin_impostato"].as_bool().unwrap());
     assert!(inbox(&a).join("mio.txt").exists() && a.sh.fingerprint() == ident);
     // rigenerazione esplicita
@@ -411,5 +414,151 @@ async fn snapshot_is_complete_for_the_ui_and_has_no_secrets() {
     }
     let txt = s.to_string();
     assert!(!txt.contains("987654") && !txt.contains("pin_ricezione") && !txt.contains("PRIVATE KEY"));
+    r.stop_all().await;
+}
+
+// ---------------------------------------------------------------------------------------------- Cable: recupero e rete
+
+#[tokio::test(flavor = "multi_thread")]
+async fn retry_resends_only_unfinished_files_and_never_the_done_ones() {
+    let _big = BIG.lock().await;
+    let mut r = Rig::new();
+    let (a, b) = (r.engine("a").await, r.engine("b").await);
+    pair(&a, &b).await;
+    let fa = make(&r, "1-piccolo.txt", b"primo");
+    let grande = r.path("src/2-grande.bin");
+    sparse(&grande, 400 * 1024 * 1024);
+    let fc = make(&r, "3-ultimo.txt", b"terzo");
+    let jid = a.invia(&b.sh.fingerprint(), &[s(&fa), s(&grande), s(&fc)], None).unwrap();
+    let req = accept_when_pending(&b, None).await;
+    // il destinatario interrompe a metà del file grande
+    wait_for(|| async { (b.receiver.snapshot().0[0]["byte"].as_u64().unwrap() > 1024 * 1024).then_some(()) }, 20.0).await;
+    assert!(b.receiver.annulla(req["id"].as_str().unwrap()));
+    let j = wait_job(&a, &jid, 20.0).await;
+    // a seconda di chi vince la corsa fra la risposta d'errore e la chiusura del socket: parziale o interrotto, mai «completato»
+    assert!(["parziale", "interrotto"].contains(&j["stato"].as_str().unwrap()), "il destinatario ha annullato dopo il primo file: {j}");
+    assert_eq!((j["fatti"].clone(), j["riprovabili"].clone()), (json!(1), json!(2)), "{j}");
+    assert_eq!(j["file"][0]["stato"], "fatto");
+    assert_ne!(j["file"][2]["stato"], "fatto", "il terzo non è stato consegnato");
+    assert_eq!(j["incerti"], 0, "interrotto a metà: il destinatario scarta il parziale, nessuna incertezza");
+    assert_eq!(listing(&inbox(&b)), ["1-piccolo.txt"]);
+
+    let (new_id, saltati) = a.riprova(&jid).unwrap();
+    assert!(saltati.is_empty());
+    assert!(a.riprova(&jid).is_err(), "lo stesso invio non si riprova due volte: si riprova il nuovo");
+    accept_when_pending(&b, None).await;
+    let j2 = wait_job(&a, &new_id, 60.0).await;
+    assert_eq!(j2["stato"], "completato", "{j2}");
+    assert_eq!((j2["n"].clone(), j2["riprova_di"].clone()), (json!(2), json!(jid)), "solo i 2 non completati");
+    assert_eq!(listing(&inbox(&b)), ["1-piccolo.txt", "2-grande.bin", "3-ultimo.txt"], "il primo non è stato rimandato (niente «(1)»)");
+    assert!(a.riprova(&new_id).is_err(), "un invio completato non si riprova");
+    r.stop_all().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn retry_skips_files_that_vanished_and_refuses_when_nothing_is_left() {
+    let mut r = Rig::new();
+    let (a, b) = (r.engine("a").await, r.engine("b").await);
+    pair(&a, &b).await;
+    let f1 = make(&r, "uno.txt", b"1");
+    let jid = a.invia(&b.sh.fingerprint(), &[s(&f1)], None).unwrap();
+    accept_when_pending(&b, Some(vec![])).await;                  // il destinatario rifiuta
+    let j = wait_job(&a, &jid, 10.0).await;
+    assert_eq!(j["stato"], "rifiutato", "{j}");
+    assert_eq!(j["riprovabili"], 1, "dopo un rifiuto si può ripetere l'invio");
+    std::fs::remove_file(&f1).unwrap();
+    let e = a.riprova(&jid).unwrap_err();
+    assert!(e.contains("non più presenti"), "{e}");
+    r.stop_all().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn stale_address_does_not_delay_or_break_the_send() {
+    let mut r = Rig::new();
+    let (a, b) = (r.engine("a").await, r.engine("b").await);
+    pair(&a, &b).await;
+    // il dispositivo è stato visto da ultimo a un indirizzo che non risponde (DHCP cambiato, altra rete)
+    let mut info = b.sh.info(true);
+    info["port"] = json!(b.port());
+    a.sh.registry.upsert(&info, "10.255.255.1", "multicast", None);
+    let d = a.sh.registry.get(&b.sh.fingerprint()).unwrap();
+    assert_eq!((d.addrs.len(), d.ip.as_str()), (2, "10.255.255.1"), "l'ultimo indirizzo visto è quello sbagliato");
+    let f = make(&r, "x.txt", b"ciao");
+    let t0 = Instant::now();
+    let jid = a.invia(&b.sh.fingerprint(), &[s(&f)], None).unwrap();
+    accept_when_pending(&b, None).await;
+    let j = wait_job(&a, &jid, 15.0).await;
+    assert_eq!(j["stato"], "completato", "{j}");
+    assert!(t0.elapsed() < Duration::from_millis(2500), "gli indirizzi si provano in parallelo: {:?}", t0.elapsed());
+    assert_eq!(a.sh.registry.get(&b.sh.fingerprint()).unwrap().ip, "127.0.0.1", "ora l'indirizzo confermato è quello giusto");
+    r.stop_all().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn refresh_tells_reachable_from_merely_seen() {
+    let mut r = Rig::new();
+    let (a, b) = (r.engine("a").await, r.engine("b").await);
+    pair(&a, &b).await;
+    let fp = b.sh.fingerprint();
+    let find = |e: &std::sync::Arc<pixelhub_engine::Engine>| e.snapshot()["dispositivi"].as_array().unwrap().iter().find(|d| d["fp"] == json!(fp)).cloned().unwrap();
+    assert_eq!(a.aggiorna().await, 1);
+    let d = find(&a);
+    assert_eq!((d["vicino"].clone(), d["raggiungibile"].clone()), (json!(true), json!(true)));
+    b.stop().await;                                              // b sparisce senza annunciarlo
+    assert_eq!(a.aggiorna().await, 0);
+    let d = find(&a);
+    assert_eq!((d["vicino"].clone(), d["raggiungibile"].clone()), (json!(true), json!(false)), "visto di recente ma non raggiungibile: due fatti distinti");
+    // e un invio verso di lui dice cosa è stato osservato, senza dare la colpa a una causa sola
+    let f = make(&r, "y.txt", b"y");
+    let jid = a.invia(&fp, &[s(&f)], None).unwrap();
+    let j = wait_job(&a, &jid, 15.0).await;
+    assert_eq!(j["stato"], "errore", "{j}");
+    let msg = j["errore"].as_str().unwrap();
+    assert!(msg.contains("127.0.0.1"), "il fatto osservato include l'indirizzo: {msg}");
+    assert!(!msg.to_lowercase().contains("firewall"), "una connessione rifiutata non va attribuita al firewall: {msg}");
+    r.stop_all().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn resume_event_expires_presence_and_is_debounced() {
+    use pixelhub_engine::discovery::NetEvent;
+    let mut r = Rig::new();
+    let a = r.engine("a").await;
+    let mut info = json!({"alias": "Tel", "fingerprint": "C".repeat(64), "port": 53317, "protocol": "https"});
+    a.sh.registry.upsert(&info, "192.168.77.5", "multicast", None);
+    info["fingerprint"] = json!("D".repeat(64));
+    a.sh.registry.upsert(&info, "192.168.77.6", "manuale", None);
+    let near = |e: &std::sync::Arc<pixelhub_engine::Engine>| e.snapshot()["dispositivi"].as_array().unwrap().iter().filter(|d| d["vicino"] == json!(true)).count();
+    assert_eq!(near(&a), 2);
+    // una raffica di eventi (come fa NetworkManager) vale come un solo cambio
+    for _ in 0..5 { a.discovery.notifica(NetEvent::Resume); }
+    wait_for(|| async { (a.discovery.cambi.load(std::sync::atomic::Ordering::Relaxed) >= 1).then_some(()) }, 8.0).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(a.discovery.cambi.load(std::sync::atomic::Ordering::Relaxed), 1);
+    assert_eq!(near(&a), 1, "dopo la ripresa resta solo l'indirizzo inserito a mano, finché gli altri non si riannunciano");
+    r.stop_all().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn network_drop_mid_transfer_is_an_interruption_with_per_file_outcome() {
+    let _big = BIG.lock().await;
+    let mut r = Rig::new();
+    let (a, b) = (r.engine("a").await, r.engine("b").await);
+    pair(&a, &b).await;
+    let f1 = make(&r, "1-ok.txt", b"ok");
+    let grande = r.path("src/2-grande.bin");
+    sparse(&grande, 600 * 1024 * 1024);
+    let f3 = make(&r, "3-dopo.txt", b"dopo");
+    let jid = a.invia(&b.sh.fingerprint(), &[s(&f1), s(&grande), s(&f3)], None).unwrap();
+    accept_when_pending(&b, None).await;
+    wait_for(|| async { (b.receiver.snapshot().0[0]["byte"].as_u64().unwrap() > 1024 * 1024).then_some(()) }, 20.0).await;
+    b.stop().await;                                              // il destinatario sparisce di colpo (rete caduta, app chiusa)
+    let j = wait_job(&a, &jid, 30.0).await;
+    assert!(["interrotto", "parziale"].contains(&j["stato"].as_str().unwrap()), "{j}");
+    assert_eq!(j["file"][0]["stato"], "fatto", "{j}");
+    assert_eq!(j["file"][1]["stato"], "errore", "{j}");
+    assert_eq!(j["file"][1]["incerto"], false, "caduta a metà del file: il parziale si scarta, esito certo");
+    assert_ne!(j["file"][2]["stato"], "fatto");
+    assert!(j["riprovabili"].as_u64().unwrap() >= 2);
     r.stop_all().await;
 }

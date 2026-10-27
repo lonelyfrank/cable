@@ -89,7 +89,7 @@ async fn scenario(app: &AppHandle, a: &Arc<Engine>, shots: &PathBuf, c: &mut Che
     c.ok("passo 1: controlli (rete, ricezione, identità) presenti", js(app, "return document.querySelectorAll('#wizChecks > div').length").await == "3", "");
 
     let peer = Engine::new(Paths::under(tmp.path()), pport, false);
-    peer.sh.settings.aggiorna(json!({"nome_pc": "Pixel di prova"}).as_object().unwrap());
+    peer.sh.settings.aggiorna(json!({"nome_pc": "Telefono di prova"}).as_object().unwrap());
     peer.start().await;
     c.ok("passo 2: ricerca per IP trova il telefono", a.cerca(Some("127.0.0.1"), Some(pport)).await == 1, "");
     js(app, "AZ.wizAvanti(); return 1").await;
@@ -141,7 +141,7 @@ async fn scenario(app: &AppHandle, a: &Arc<Engine>, shots: &PathBuf, c: &mut Che
     c.ok("fine: il wizard si chiude e non ricompare", until(app, "!document.getElementById('wizard').classList.contains('on') && S.conf.wizard_fatto === true", 10).await, "");
     c.ok("fine: nome e PIN applicati (PIN solo come hash)", a.sh.settings.str("nome_pc") == "Fedora di prova" && !a.sh.settings.get("pin_ricezione").is_null()
          && !std::fs::read_to_string(a.sh.paths.settings_file()).unwrap().contains("2468"), "");
-    c.ok("fine: il telefono verificato è il destinatario", js(app, "return destinazione() ? destinazione().alias : ''").await == "Pixel di prova", "");
+    c.ok("fine: il telefono verificato è il destinatario", js(app, "return destinazione() ? destinazione().alias : ''").await == "Telefono di prova", "");
     a.imposta_pin(None);
 
     // ---- uso normale
@@ -198,7 +198,7 @@ async fn scenario(app: &AppHandle, a: &Arc<Engine>, shots: &PathBuf, c: &mut Che
     // ---- altre pagine
     for p in ["home", "schermo", "pixel", "impostazioni"] { js(app, &format!("vai('{p}'); return 1")).await; shot(app, shots, &format!("11-{p}")).await; }
     let d = js(app, "const r = await api('diagnostica'); return r.testo.split('\\n')[0]").await;
-    c.ok("diagnostica raggiungibile dalla pagina", d.contains("Pixel Hub"), &d);
+    c.ok("diagnostica raggiungibile dalla pagina", d.contains("Cable"), &d);
     js(app, "AZ.wizApri(); return 1").await;
     c.ok("il wizard si riapre da Impostazioni", until(app, "document.getElementById('wizard').classList.contains('on')", 5).await, "");
     js(app, "AZ.wizSalta(); return 1").await;

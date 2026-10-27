@@ -50,7 +50,13 @@ const dim = n => { n = +n || 0; const u = ["B", "KB", "MB", "GB", "TB"]; let i =
 const vel = n => n ? " · " + dim(n) + "/s" : "";
 const fa = t => { const s = Date.now() / 1000 - t; if (s < 60) return "adesso"; if (s < 3600) return Math.floor(s / 60) + " min fa"; if (s < 86400) return Math.floor(s / 3600) + " h fa";
   const d = new Date(t * 1000); return d.toLocaleDateString("it-IT", { day: "numeric", month: "short" }); };
-const iniziale = s => (String(s || "?").replace(/^(pixel|android)\s+(di\s+)?/i, "").trim()[0] || "?").toUpperCase();
+const iniziale = s => (String(s || "?").trim()[0] || "?").toUpperCase();
+const dur = s => s < 60 ? Math.max(1, Math.round(s)) + " s" : s < 3600 ? Math.round(s / 60) + " min" : Math.floor(s / 3600) + " h " + Math.round(s % 3600 / 60) + " min";
+/* nome da mostrare: l'etichetta del motore distingue i dispositivi con lo stesso nome */
+const nomeDisp = d => d.etichetta || d.alias;
+/* quattro cose diverse: ricordato, vicino (presenza), raggiungibile (connessione riuscita), confermato (verifica con codice) */
+const statoDisp = d => d.vicino ? (d.raggiungibile === false ? "Visto, ma non risponde" : d.raggiungibile ? "Raggiungibile" : "Vicino")
+  : (d.ricordato ? "Ricordato · non vicino" : "Non vicino");
 function set(el, html) { if (typeof el === "string") el = $(el); if (el && el._h !== html) { el._h = html; el.innerHTML = html; icone(el); } }
 /* canale verso il motore (comandi Tauri: niente server HTTP, niente token) */
 const TAURI = window.__TAURI__;
@@ -90,7 +96,7 @@ function destinazione() {
   if (destSel) { const d = v.find(x => x.fp === destSel); if (d) return d; }
   return v.length === 1 ? v[0] : null;
 }
-function nessunDest() { return vicini().length > 1 ? "Scegli un dispositivo in Condividi" : "Apri LocalSend sul telefono"; }
+function nessunDest() { return vicini().length > 1 ? "Scegli un dispositivo in Condividi" : "Apri LocalSend sullo smartphone"; }
 function tipoDa(n) {
   const e = (n.split(".").pop() || "").toLowerCase();
   if (["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp"].includes(e)) return "foto";
@@ -128,7 +134,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => S &&
 function render() {
   if (!S) return;
   applicaAspetto();
-  renderHome(); renderSchermo(); renderCondividi(); renderCavo(); renderImpostazioni(); renderSheet(); renderPin(); renderWizard();
+  renderHome(); renderSchermo(); renderCondividi(); renderCavo(); renderImpostazioni(); renderSheet(); renderPin(); renderScelta(); renderWizard();
   if (pagina === "condividi") visto = Date.now() / 1000;
   const pend = S.ricezioni.filter(r => r.stato === "attesa").length + S.messaggi.filter(m => m.quando > visto).length;
   const p = $("#puntoCond"); p.textContent = pend; p.classList.toggle("on", pend > 0 && pagina !== "condividi");
@@ -152,6 +158,12 @@ function avvisoLS() {
       <b>${porta ? "Un'altra app sta già usando la porta " + sv.porta : "Ricezione file non attiva"}</b>
       <small>${porta ? "Di solito è LocalSend per PC: chiudilo, poi riprova. L'invio verso altri dispositivi non è influenzato." : esc(sv.errore || "")}</small></div>
       <button class="btn piccolo primario" data-azione="riprovaLS">Riprova</button></div>`;
+  }
+  for (const c of S.cambi_identita || []) {
+    h += `<div class="vetro avviso"><div class="ic">${I.attenzione}</div><div class="t"><b>«${esc(c.nome)}» si presenta con un'identità diversa</b>
+      <small>Ha lo stesso nome di un dispositivo ricordato${c.vecchio_confermato ? " e confermato da te" : ""}, ma il certificato è diverso (${esc(c.nuovo.slice(0, 8))} invece di ${esc(c.antico.slice(0, 8))}). Può essere l'app reinstallata oppure un altro dispositivo. Il vecchio resta com'è; il nuovo non è confermato.</small></div>
+      <button class="btn piccolo" data-azione="idIgnora" data-nuovo="${esc(c.nuovo)}">Ignora</button>
+      <button class="btn piccolo primario" data-azione="idSostituisci" data-antico="${esc(c.antico)}" data-nuovo="${esc(c.nuovo)}" data-nome="${esc(c.nome)}">È lo stesso: sostituisci</button></div>`;
   }
   for (const a of S.avvisi || []) h += `<div class="vetro avviso"><div class="ic" style="background:var(--blu)">${I.ok}</div><div class="t"><small style="font-size:13.5px">${esc(a)}</small></div></div>`;
   return h;
@@ -179,8 +191,8 @@ function renderHome() {
       </div></div></div>`;
   } else if (dest) {
     h = `<h2>Destinatario</h2><div class="pixel"><div class="telefono"></div><div class="info">
-      <h3>${esc(dest.alias)}</h3><div class="sub">${esc(dest.modello || "Dispositivo LocalSend")} · ${esc(dest.ip)}</div>
-      <span class="chip ok"><i></i>Vicino e pronto</span>${dest.verificato ? ' <span class="chip blu">Identità verificata</span>' : ""}${dest.preferito ? ' <span class="chip">★ Preferito</span>' : ""}
+      <h3>${esc(nomeDisp(dest))}</h3><div class="sub">${esc(dest.modello || "Dispositivo")} · ${esc(dest.ip)}</div>
+      <span class="chip ${dest.raggiungibile === false ? "warn" : "ok"}"><i></i>${esc(statoDisp(dest))}</span>${dest.confermato ? ' <span class="chip blu">Identità confermata da te</span>' : ""}${dest.preferito ? ' <span class="chip">★ Preferito</span>' : ""}
       <p class="vuoto" style="margin-top:14px">${v.length > 1 ? `Ci sono altri ${v.length - 1} dispositivi vicini: li scegli in <span class="link" data-azione="vai" data-p="condividi">Condividi</span>.` : "Trascina file qui sotto per mandarglieli."}</p></div></div>`;
   } else {
     h = `<h2>Dispositivi</h2><div class="pixel"><div class="telefono spento"></div><div class="info">
@@ -200,15 +212,16 @@ function renderHome() {
   else if (sc.attivo) m = `<button class="tasto-tondo attivo" data-azione="schermo">${I.stop}</button><b>Avvio scrcpy…</b><small>Controlla il telefono e i dettagli in Schermo.</small>`;
   else m = `<button class="tasto-tondo" data-azione="schermo">${I.play}</button><b>Schermo del telefono</b><small>Collega il telefono con Debug USB e premi Avvia.</small>`;
   set("#homeMirror", m);
+  $("#cardMirror").style.display = sc.installato ? "" : "none";          // facoltativo, solo Android
 
-  set("#homeDest", dest ? `<span class="chip blu"><i></i>a ${esc(dest.alias)}</span>` : `<span class="chip warn"><i class="pulsa"></i>${esc(nessunDest())}</span>`);
+  set("#homeDest", dest ? `<span class="chip blu"><i></i>a ${esc(nomeDisp(dest))}</span>` : `<span class="chip warn"><i class="pulsa"></i>${esc(nessunDest())}</span>`);
   set("#homeInvii", listaInvii(S.invii.slice(0, 2), true));
 
   const msg = S.messaggi[0];
   set("#homeMsg", msg ? bolla(msg) : "");
 
   const rec = S.recenti.slice(0, 12);
-  set("#homeRecenti", rec.length ? rec.map(tile).join("") : `<p class="vuoto">Quando un dispositivo ti manda qualcosa, lo trovi qui. Sul telefono: Condividi › LocalSend › «${esc(S.conf.nome_pc)}».</p>`);
+  set("#homeRecenti", rec.length ? rec.map(tile).join("") : `<p class="vuoto">Quando un dispositivo ti manda qualcosa, lo trovi qui. Sullo smartphone: Condividi › LocalSend (o app compatibile) › «${esc(S.conf.nome_pc)}».</p>`);
 }
 
 function bolla(m) {
@@ -226,26 +239,54 @@ function tile(f) {
 }
 
 const STATO_INVIO = {
-  preparazione: () => "Preparo i file…", attesa: j => `Aspetto che ${j.verso} accetti…`, pin: j => j.pin_errato ? "PIN errato: riprova" : "Serve il PIN del destinatario",
-  invio: (j, pct) => `Invio… ${pct}% · ${dim(j.inviati)} di ${dim(j.totale)}${vel(j.velocita)}`, completato: () => "Inviato ✓",
-  parziale: j => j.errore || "Inviato solo in parte", rifiutato: j => j.errore || "Rifiutato", annullato: j => "Annullato" + (j.errore ? " " + j.errore : ""), errore: j => j.errore || "Errore",
+  preparazione: () => "Preparazione: controllo i file e cerco il dispositivo…", attesa: j => `In attesa che ${j.verso} accetti…`,
+  pin: j => j.pin_errato ? "PIN errato: riprova" : "Serve il PIN del destinatario",
+  invio: (j, pct) => `Trasferimento ${pct}% · ${dim(j.inviati)} di ${dim(j.totale)}${vel(j.velocita)}${j.residuo ? " · circa " + dur(j.residuo) + " rimanenti" : ""}`,
+  completato: () => "Completato ✓",
+  parziale: j => j.errore || "Completato solo in parte", rifiutato: j => j.errore || "Rifiutato dal destinatario",
+  annullato: j => "Annullato da te" + (j.errore ? " · " + j.errore : ""),
+  scaduto: j => "Scaduto · " + (j.errore || "nessuna risposta"), interrotto: j => "Interrotto · " + (j.errore || "connessione persa"), errore: j => j.errore || "Errore",
 };
+const STATO_FILE = { attesa: "in coda", inviando: "in corso", fatto: "inviato ✓", errore: "non inviato", rifiutato: "non accettato dal destinatario" };
+const dettAperti = new Set();
+document.addEventListener("toggle", e => { const id = e.target?.dataset?.jid; if (id) { e.target.open ? dettAperti.add(id) : dettAperti.delete(id); } }, true);
+function dettaglioFile(j) {
+  if (!(j.file.length > 1 || j.errori)) return "";
+  const righe = j.file.map(f => {
+    const pct = f.size ? Math.round(f.inviati / f.size * 100) : 100;
+    const t = f.stato === "inviando" ? `${pct}% · ${dim(f.inviati)} di ${dim(f.size)}` : (STATO_FILE[f.stato] || f.stato) + (f.incerto ? " · esito incerto" : "");
+    return `<div class="f ${f.stato === "errore" ? "bad" : ""}"><b title="${esc(f.nome)}">${esc(f.nome)}</b><small title="${esc(f.errore)}">${esc(t)}</small></div>`;
+  }).join("") + (j.altri_file ? `<div class="f"><small>…e altri ${j.altri_file} file</small></div>` : "");
+  return `<details class="dett" data-jid="${esc(j.id)}" ${dettAperti.has(j.id) ? "open" : ""}><summary>Esito per file · ${j.fatti} inviati${j.errori ? `, ${j.errori} non inviati` : ""}${j.rifiutati ? `, ${j.rifiutati} non accettati` : ""}</summary>${righe}</details>`;
+}
 function listaInvii(lista, compatta) {
   if (!lista.length) return compatta ? "" : `<p class="vuoto">Nessun trasferimento in corso.</p>`;
   return `<div style="margin-top:${compatta ? 14 : 0}px">` + lista.map(j => {
     const pct = j.totale ? Math.round(j.inviati / j.totale * 100) : 0;
     const st = (STATO_INVIO[j.stato] || (() => j.stato))(j, pct);
-    const bad = ["errore", "rifiutato"].includes(j.stato), warn = j.stato === "parziale" || j.stato === "pin";
+    const bad = ["errore", "rifiutato"].includes(j.stato), warn = ["parziale", "pin", "scaduto", "interrotto"].includes(j.stato);
     const col = bad ? "var(--rosso)" : warn ? "var(--arancio)" : j.stato === "completato" ? "var(--verde)" : "var(--blu)";
     const nome = j.testo ? "Testo" : j.n === 1 ? j.nomi[0] : `${j.n} file`;
     const viva = ["preparazione", "attesa", "pin", "invio"].includes(j.stato);
+    const attuale = j.stato === "invio" ? j.file.find(f => f.stato === "inviando") : null;
+    const riprova = j.riprovabili > 0 && !j.riprovato ? `<div style="margin-top:8px"><button class="btn piccolo primario" data-azione="riprova" data-id="${esc(j.id)}">Riprova i file non completati (${j.riprovabili})</button>
+      <small class="vuoto" style="display:block;margin-top:4px">Ogni file riparte dall'inizio; quelli già inviati non vengono rimandati.</small></div>` : "";
     return `<div class="trasf"><div class="ic" style="background:color-mix(in srgb,${col} 15%,transparent);color:${col}">${j.stato === "completato" ? I.ok : bad || warn ? I.attenzione : I.su}</div>
       <div class="t"><b>${esc(nome)} → ${esc(j.verso)}</b><small style="${bad ? "color:var(--rosso)" : ""}">${esc(st)}</small>
-      ${j.stato === "invio" || j.stato === "attesa" ? `<div class="barra-prog"><i style="width:${j.stato === "attesa" ? 3 : pct}%"></i></div>` : ""}</div>
+      ${j.stato === "invio" || j.stato === "attesa" ? `<div class="barra-prog"><i style="width:${j.stato === "attesa" ? 3 : pct}%"></i></div>` : ""}
+      ${attuale && j.n > 1 ? `<small class="vuoto">${esc(attuale.nome)} · ${attuale.size ? Math.round(attuale.inviati / attuale.size * 100) : 0}% · file ${j.fatti + 1} di ${j.n - j.rifiutati}</small>` : ""}
+      ${compatta ? "" : dettaglioFile(j)}${riprova}</div>
       ${viva ? `<button class="btn icona piccolo" data-azione="annullaInvio" data-id="${esc(j.id)}" title="Annulla">${I.x}</button>` : ""}</div>`;
   }).join("") + "</div>";
 }
 
+/* «Apri» (un solo file: il file; altrimenti la cartella) e «Mostra nella cartella» */
+function aperturaRicevuti(r) {
+  const fatti = r.file.filter(f => f.stato === "fatto" && f.percorso);
+  const primo = fatti[0]?.percorso || "";
+  return `<span style="display:flex;gap:6px;flex-direction:column;align-items:stretch">${fatti.length === 1 ? `<button class="btn piccolo" data-azione="apriFile" data-path="${esc(primo)}">Apri</button>` : `<button class="btn piccolo" data-azione="apriCartella">Apri cartella</button>`}
+    ${primo ? `<button class="btn piccolo" data-azione="mostra" data-path="${esc(primo)}">Mostra nella cartella</button>` : ""}</span>`;
+}
 const STATO_RIC = { completata: "Ricevuto ✓", parziale: "Ricevuto solo in parte", rifiutata: "Rifiutato da te", scaduta: "Scaduto", annullata: "Annullato", errore: "Non riuscito" };
 function listaRicezioni() {
   const attive = S.ricezioni.filter(r => r.stato === "ricezione" || r.stato === "accettata").map(r => {
@@ -259,7 +300,7 @@ function listaRicezioni() {
     const col = ok ? "var(--verde)" : bad ? "var(--rosso)" : "var(--arancio)";
     return `<div class="trasf"><div class="ic" style="background:color-mix(in srgb,${col} 15%,transparent);color:${col}">${ok ? I.ok : I.attenzione}</div>
       <div class="t"><b>Da ${esc(r.alias)}</b><small>${esc(STATO_RIC[r.stato])}${r.ricevuti ? ` · ${r.ricevuti} di ${r.selezionati} file` : ""}${r.errore && !ok ? " · " + esc(r.errore) : ""}</small></div>
-      ${r.ricevuti ? `<button class="btn piccolo" data-azione="apriCartella">Apri cartella</button>` : ""}</div>`;
+      ${r.ricevuti ? aperturaRicevuti(r) : ""}</div>`;
   }).join("");
   return attive + fatte;
 }
@@ -281,23 +322,23 @@ function renderSchermo() {
 function renderCondividi() {
   set("#avvisoLS2", avvisoLS());
   const dest = destinazione(), tutti = S.dispositivi;
-  let h = tutti.map(d => `<div class="disp ${dest && d.fp === dest.fp ? "sel" : ""} ${d.vicino ? "" : "offline"}" data-fp="${esc(d.fp)}" title="${esc(d.ip || "non vicino")}">
+  let h = tutti.map(d => `<div class="disp ${dest && d.fp === dest.fp ? "sel" : ""} ${d.vicino ? "" : "offline"}" data-fp="${esc(d.fp)}" title="${esc((d.ip || "") + (d.modello ? " · " + d.modello : "") + " · impronta " + d.fp.slice(0, 8))}">
       <div class="av" style="${d.tipo === "desktop" ? "background:linear-gradient(160deg,#9aa0a6,#5f6368)" : ""}">${d.tipo === "desktop" ? I.pc : esc(iniziale(d.alias))}
         <button class="stella ${d.preferito ? "on" : ""}" data-azione="stella" data-fp="${esc(d.fp)}" data-on="${d.preferito ? 0 : 1}" title="${d.preferito ? "Togli dai preferiti" : "Aggiungi ai preferiti"}">${d.preferito ? I.stellaPiena : I.stella}</button></div>
-      <b>${esc(d.alias)}</b><small>${d.vicino ? (d.verificato ? "Verificato · " : "") + esc(d.modello || (d.tipo === "mobile" ? "Telefono" : d.tipo)) : "Non vicino"}</small></div>`).join("");
-  h += `<div class="disp" style="cursor:default"><div class="radar">${I.telefono}</div><b>${vicini().length ? "Cerco altri…" : "Cerco…"}</b><small>${vicini().length ? "" : "Apri LocalSend sul telefono"}</small></div>`;
+      <b>${esc(nomeDisp(d))}</b><small>${esc(statoDisp(d))}${d.confermato ? " · ✓" : ""}</small></div>`).join("");
+  h += `<div class="disp" style="cursor:default"><div class="radar">${I.telefono}</div><b>${vicini().length ? "Cerco altri…" : "Cerco…"}</b><small>${vicini().length ? "" : "Apri LocalSend sullo smartphone"}</small></div>`;
   set("#vicini", h);
 
   set("#coda", coda.map((f, i) => `<span class="chip">${iconaTipo(f.tipo).replace("<svg", '<svg width="14" height="14"')}${esc(f.nome)}<button data-azione="togliCoda" data-i="${i}" title="Togli">${I.x}</button></span>`).join(""));
   const b = $("#inviaCoda");
   b.disabled = !coda.length || !dest;
-  $("#inviaCodaT").textContent = !coda.length ? "Invia" : dest ? `Invia a ${dest.alias}` : (vicini().length > 1 ? "Scegli un dispositivo" : "Nessun dispositivo vicino");
+  $("#inviaCodaT").textContent = !coda.length ? "Invia" : dest ? `Invia a ${nomeDisp(dest)}` : (vicini().length > 1 ? "Scegli un dispositivo" : "Nessun dispositivo vicino");
 
   const t = listaRicezioni() + (S.invii.length ? listaInvii(S.invii.slice(0, 6), false) : "");
   set("#trasferimenti", t || `<p class="vuoto">Nessun trasferimento in corso.</p>`);
 
   set("#messaggi", S.messaggi.length ? S.messaggi.slice(0, 6).map(bolla).join("")
-    : `<p class="vuoto">I testi che mandi dal telefono con LocalSend (scheda Invia › Testo) compaiono qui, pronti da copiare.</p>`);
+    : `<p class="vuoto">I testi che mandi dallo smartphone (in LocalSend: Invia › Testo) compaiono qui, pronti da copiare.</p>`);
 
   set("#ricevuti", S.recenti.length ? S.recenti.map(f => `<div class="riga cliccabile" draggable="true" data-file="${esc(f.path)}">
       <div class="ic" style="background:${coloreTipo(f.tipo)}">${iconaTipo(f.tipo)}</div>
@@ -346,12 +387,13 @@ function renderImpostazioni() {
   set("#impFoto", esc(c.cartella_foto));
   set("#pinStato", S.pin_impostato ? "Impostato: i mittenti devono inserirlo" : "Non impostato: ogni richiesta resta comunque da confermare");
   $("#pinTogli").style.display = S.pin_impostato ? "" : "none";
-  const pref = S.dispositivi.filter(d => d.preferito);
-  set("#preferiti", pref.length ? `<div class="sezione">Preferiti</div><div class="vetro lista">` + pref.map(f =>
-    `<div class="riga"><div class="ic" style="background:linear-gradient(160deg,#7aa2ff,#5e5ce6)">${I.telefono}</div><div class="testo"><b>${esc(f.alias)}</b>
-     <small>${f.verificato ? "Identità verificata in questa sessione" : "Identità non verificata"} · ${f.vicino ? "vicino" : "non vicino"}</small></div>
+  const ric = S.dispositivi.filter(d => d.ricordato);
+  set("#preferiti", ric.length ? `<div class="sezione">Dispositivi ricordati</div><div class="vetro lista">` + ric.map(f =>
+    `<div class="riga"><div class="ic" style="background:linear-gradient(160deg,#7aa2ff,#5e5ce6)">${I.telefono}</div><div class="testo"><b>${esc(nomeDisp(f))}</b>
+     <small>${esc(statoDisp(f))} · ${f.confermato ? "identità confermata da te" : "identità non confermata"} · impronta ${esc(f.fp.slice(0, 8))}</small></div>
+     <button class="btn piccolo icona" data-azione="stella" data-fp="${esc(f.fp)}" data-on="${f.preferito ? 0 : 1}" title="${f.preferito ? "Togli la stella" : "Metti la stella"}">${f.preferito ? I.stellaPiena : I.stella}</button>
      <button class="btn piccolo" data-azione="dimentica" data-fp="${esc(f.fp)}" data-nome="${esc(f.alias)}">Dimentica</button></div>`).join("") +
-    `</div><p class="vuoto" style="margin:8px 8px 0">Un preferito è solo una scorciatoia: non viene mai accettato in automatico e il suo nome non prova chi sia.</p>` : "");
+    `</div><p class="vuoto" style="margin:8px 8px 0">La stella è solo una scorciatoia (il dispositivo resta in cima all'elenco): non autorizza mai la ricezione automatica e il nome non prova chi sia il dispositivo. «Confermato» significa che hai verificato l'impronta con il codice.</p>` : "");
   set("#componenti", S.componenti.map(k => `<div class="riga"><div class="ic" style="background:${k.ok ? "var(--verde)" : "var(--arancio)"}">${k.ok ? I.ok : I.attenzione}</div>
     <div class="testo"><b>${esc(k.nome)}</b><small>${esc(k.desc)}${k.ok ? "" : " · nel terminale: " + esc(k.comando)}</small></div><span class="val">${k.ok ? "Pronto" : "Non installato"}</span></div>`).join(""));
   const r = S.rete;
@@ -361,7 +403,9 @@ function renderImpostazioni() {
   const id = S.identita;
   set("#identita", `<div class="riga"><div class="ic" style="background:${id.stato === "ok" ? "var(--verde)" : "var(--rosso)"}">${I.scudo}</div><div class="testo"><b>Identità di questo PC</b>
     <small style="user-select:text">${id.stato === "ok" ? esc(id.impronta.match(/.{1,8}/g).slice(0, 4).join(" ")) + "…" : esc(id.errore)}</small></div><span class="val">${id.stato === "ok" ? "Valida" : "Da correggere"}</span></div>`);
-  set("#versione", `Pixel Hub ${esc(S.versione)} · LocalSend, scrcpy e ADB`);
+  set("#versione", `Cable ${esc(S.versione)} · protocollo LocalSend · ADB e scrcpy facoltativi (solo Android)`);
+  const andr = S.componenti.some(k => k.ok);                              // strumenti Android: visibili solo se installati
+  $("#tabSchermo").style.display = $("#tabPixel").style.display = andr ? "" : "none";
 }
 
 /* ------------------------------------------------------------ richieste in arrivo (accettazione anche parziale) */
@@ -374,7 +418,7 @@ function renderSheet() {
   const n = r.file.length, testo = r.tipo === "testo";
   set("#sheet", `<div class="av">${esc(iniziale(r.alias))}</div>
     <h3>${esc(r.alias)}</h3><p>${testo ? "vuole inviarti un messaggio di testo" : `vuole inviarti ${n === 1 ? "un file" : n + " file"} · ${dim(r.totale)}`}</p>
-    <p style="font-size:12.5px;margin-top:6px">Indirizzo ${esc(r.ip)} · il nome è dichiarato dal mittente e non è verificato</p>
+    <p style="font-size:12.5px;margin-top:6px">Indirizzo ${esc(r.ip)} · ${r.noto ? `corrisponde a «${esc(r.noto.nome)}» (${r.noto.confermato ? "confermato da te" : r.noto.ricordato ? "dispositivo ricordato" : "visto di recente"}); ` : "dispositivo mai visto prima; "}il nome è dichiarato dal mittente e non è verificato. Accetta solo se lo aspetti.</p>
     ${testo ? "" : `<div class="files">${r.file.slice(0, 200).map(f => `<label><input type="checkbox" data-fid="${esc(f.id)}" checked>${iconaTipo(f.tipo)}<span>${esc(f.nome)}</span><em>${dim(f.size)}</em></label>`).join("")}${r.altri ? `<div><span>…e altri ${r.altri}</span></div>` : ""}</div>`}
     <div class="azioni"><button class="btn" data-azione="rifiuta">Rifiuta</button><button class="btn primario" data-azione="accetta">Accetta</button></div>`);
   velo.classList.add("on");
@@ -399,7 +443,7 @@ function renderPin() {
 /* ------------------------------------------------------------ azioni */
 async function inviaA(d, percorsi, testo) {
   const r = await api("invia", { fp: d.fp, percorsi, testo });
-  toast(r.ok ? `Invio a ${d.alias}: accetta sul dispositivo` : (r.errore || "Invio non riuscito"), r.ok ? "ok" : "warn");
+  toast(r.ok ? `Preparo l'invio a ${nomeDisp(d)}: il dispositivo deve accettare` : (r.errore || "Invio non riuscito"), r.ok ? "ok" : "warn");
   return r.ok;
 }
 async function scegliFile(subito) {
@@ -413,6 +457,22 @@ function accogli(percorsi, subito, dest = destinazione()) {
   if (subito) toast(nessunDest() + ": li metto in coda", "warn");
   coda.push(...percorsi.map(daPercorso));
   if (pagina !== "condividi") vai("condividi"); else renderCondividi();
+}
+/* file portati dentro Cable senza un destinatario (riga di comando, file manager, rilascio sulla finestra):
+   si sceglie il destinatario qui, senza passare dalla Home */
+let sceltaPercorsi = null;
+function chiediDestinatario(percorsi) { sceltaPercorsi = (sceltaPercorsi || []).concat(percorsi); if (S) renderScelta(); }
+function renderScelta() {
+  const velo = $("#veloScelta");
+  if (!sceltaPercorsi) { velo.classList.remove("on"); return; }
+  const v = vicini(), p = sceltaPercorsi.map(daPercorso), n = p.length;
+  const quali = n === 1 ? p[0].nome : `${p[0].nome} e altri ${n - 1}`;
+  set("#sheetScelta", `<h3>A chi vuoi inviare?</h3><p>${esc(quali)}${n > 1 ? ` · ${n} elementi` : ""}</p>
+    <div class="sc-lista">${v.length ? v.map(d => `<div class="disp" data-azione="scegliDest" data-fp="${esc(d.fp)}" title="${esc(d.ip)}">
+        <div class="av">${d.tipo === "desktop" ? I.pc : esc(iniziale(d.alias))}</div><b>${esc(nomeDisp(d))}</b><small>${esc(statoDisp(d))}</small></div>`).join("")
+      : `<p class="vuoto">Nessun dispositivo vicino. Apri LocalSend sullo smartphone e tocca <span class="link" data-azione="aggiorna">Aggiorna</span>.</p>`}</div>
+    <div class="azioni"><button class="btn" data-azione="sceltaChiudi">Annulla</button><button class="btn" data-azione="sceltaCoda">Metti in coda</button></div>`);
+  velo.classList.add("on");
 }
 const AZ = {
   async schermo() { const on = S.schermo.attivo; const r = await api("schermo", { azione: on ? "ferma" : "avvia" }); if (!on && !r.ok) toast("Non riesco ad avviare scrcpy", "warn"); },
@@ -447,6 +507,25 @@ const AZ = {
   async cavoApri() { await api("android_apri"); },
   async associa() { const r = await api("android_riprova"); toast(r.ok ? "Autorizzato" : "Sblocca il telefono e accetta «Consenti debug USB»", r.ok ? "ok" : "warn"); },
   async esci() { await api("esci"); },
+  async riprova(e) {
+    const r = await api("riprova", { id: e.dataset.id });
+    toast(r.ok ? (r.saltati?.length ? `Riprovo; ${r.saltati.length} file non più presenti sul PC sono stati saltati` : "Riprovo i file non completati") : (r.errore || "Non posso riprovare"), r.ok ? "ok" : "warn");
+  },
+  async apriFile(e, ev) { ev.stopPropagation(); await api("apri", { path: e.dataset.path }); },
+  async aggiorna() { toast("Aggiorno l'elenco…"); const r = await api("aggiorna"); toast(r.risposto ? `${r.risposto} dispositivi raggiungibili` : "Nessun dispositivo ha risposto: controlla rete e app sullo smartphone", r.risposto ? "ok" : "warn"); },
+  async scegliDest(e) {
+    const d = (S.dispositivi || []).find(x => x.fp === e.dataset.fp), p = sceltaPercorsi;
+    sceltaPercorsi = null; renderScelta();
+    if (d && p) { destSel = d.fp; inviaA(d, p); }
+  },
+  sceltaChiudi() { sceltaPercorsi = null; renderScelta(); },
+  sceltaCoda() { coda.push(...sceltaPercorsi.map(daPercorso)); sceltaPercorsi = null; renderScelta(); vai("condividi"); },
+  async idIgnora(e) { await api("identita_ignora", { fp: e.dataset.nuovo }); },
+  async idSostituisci(e) {
+    if (await chiedi({ titolo: `Sostituire «${e.dataset.nome}»?`, ok: "Sostituisci",
+      testo: "Il nuovo dispositivo prende il posto di quello ricordato, ma NON eredita la conferma dell'identità: se vuoi, rifai la verifica con il codice." }))
+      { await api("identita_sostituisci", { antico: e.dataset.antico, nuovo: e.dataset.nuovo }); toast("Dispositivo sostituito"); }
+  },
 };
 document.addEventListener("click", ev => {
   const el = ev.target.closest("[data-azione]");
@@ -482,7 +561,7 @@ $("#pinImposta").onclick = async () => {
 $("#pinTogli").onclick = async () => { await api("pin", { pin: "" }); toast("PIN rimosso"); };
 $("#btnRipristina").onclick = async () => {
   if (await chiedi({ titolo: "Ripristinare le impostazioni?", ok: "Ripristina", pericolo: true,
-    testo: "Nome, cartelle, tema, PIN, preferiti e avvio automatico tornano ai valori predefiniti. Prima viene salvata una copia in ~/.config/pixel-hub/backups. I file ricevuti e l'identità del PC non vengono toccati." })) {
+    testo: "Nome, cartelle, tema, PIN, preferiti e avvio automatico tornano ai valori predefiniti. Prima viene salvata una copia in ~/.config/cable/backups. I file ricevuti e l'identità del PC non vengono toccati." })) {
     const r = await api("ripristina"); toast("Impostazioni ripristinate"); coda = [];
   }
 };
@@ -506,7 +585,7 @@ $("#homeInviaTesto").onclick = async () => {
 };
 
 /* cerca */
-$("#cerca").onclick = async () => { toast("Cerco dispositivi…"); const r = await api("cerca"); if (r.trovati) toast("Trovato!"); };
+$("#cerca").onclick = () => AZ.aggiorna();
 $("#ipVai").onclick = async () => {
   const ip = $("#ipManuale").value.trim();
   if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) { toast("Scrivi un indirizzo come 192.168.1.50", "warn"); return; }
@@ -531,9 +610,9 @@ window.hubDragState = on => {
 window.hubDrop = (percorsi, x, y) => {
   const su = document.elementFromPoint(x, y)?.closest?.(".disp[data-fp]");
   if (su) { const d = vicini().find(v => v.fp === su.dataset.fp); if (d) { accogli(percorsi, true, d); return; } }
-  accogli(percorsi, pagina !== "condividi");
+  chiediDestinatario(percorsi);                      // rilascio sulla finestra: scelta del destinatario
 };
-window.hubFile = percorsi => accogli(percorsi, false);       // file passati da riga di comando
+window.hubFile = percorsi => chiediDestinatario(percorsi);   // file passati da riga di comando / file manager
 // trascinamento dall'app verso il desktop
 document.addEventListener("dragstart", e => {
   const f = e.target.closest?.("[data-file]"); if (!f) return;
@@ -555,23 +634,23 @@ function wizTemplate(step) {
   const dots = `<div class="wdots">${WIZ.map((n, i) => `<div class="wdot ${i === step ? "on" : i < step ? "fatto" : ""}"><i>${i + 1}</i>${n}</div>`).join("")}</div>`;
   const foot = `<div class="wfoot"><button class="btn" data-azione="wizSalta">${step === 4 ? "Chiudi" : "Salta per ora"}</button><span class="grow"></span>
     ${step > 0 ? '<button class="btn" data-azione="wizIndietro">Indietro</button>' : ""}
-    <button class="btn primario" id="wizNext" data-azione="wizAvanti">${step === 4 ? "Inizia a usare Pixel Hub" : "Avanti"}</button></div>`;
+    <button class="btn primario" id="wizNext" data-azione="wizAvanti">${step === 4 ? "Inizia a usare Cable" : "Avanti"}</button></div>`;
   const body = [
-    `<h2>Prepara il telefono</h2><p>Pixel Hub parla con l'app ufficiale LocalSend: nessun account, tutto resta sulla tua rete.</p>
+    `<h2>Prepara lo smartphone</h2><p>Cable usa il protocollo LocalSend: sullo smartphone (Android o iPhone) serve l'app LocalSend o una compatibile. Nessun account, tutto resta sulla tua rete.</p>
      <div class="wcheck" id="wizChecks"></div>
      <div class="passi">
-       <div class="passo"><div class="n">1</div><div><b>Apri LocalSend sul telefono</b><small>Se non ce l'hai, installala dal tuo store</small></div></div>
+       <div class="passo"><div class="n">1</div><div><b>Apri LocalSend sullo smartphone</b><small>Se non ce l'hai, installala dallo store del tuo sistema</small></div></div>
        <div class="passo"><div class="n">2</div><div><b>Stessa Wi-Fi del PC</b><small>Va bene anche l'hotspot del telefono</small></div></div>
-       <div class="passo"><div class="n">3</div><div><b>Lascia attiva la cifratura (HTTPS)</b><small>Pixel Hub non parla con dispositivi senza cifratura</small></div></div>
-       <div class="passo"><div class="n">4</div><div><b>Tieni aperta la scheda «Ricevi»</b><small>Così il telefono è visibile</small></div></div>
+       <div class="passo"><div class="n">3</div><div><b>Lascia attiva la cifratura (HTTPS)</b><small>Cable non parla con dispositivi senza cifratura</small></div></div>
+       <div class="passo"><div class="n">4</div><div><b>Tieni aperta la scheda «Ricevi»</b><small>Così lo smartphone è visibile</small></div></div>
      </div>`,
-    `<h2>Scegli il telefono</h2><p>Compaiono i dispositivi LocalSend vicini. Scegli tu quello giusto: Pixel Hub non sceglie mai al posto tuo.</p>
+    `<h2>Scegli lo smartphone</h2><p>Compaiono i dispositivi vicini. Scegli tu quello giusto: Cable non sceglie mai al posto tuo.</p>
      <div class="vicini wbox" id="wizDevs" style="min-height:130px"></div>
      <details><summary>Non lo vedi? Inserisci l'indirizzo IP</summary>
        <div style="display:flex;gap:10px;margin-top:10px"><input class="input" id="wizIp" placeholder="es. 192.168.1.50 (lo trovi in LocalSend › Ricevi)" style="flex:1"><button class="btn" id="wizIpVai">Collega</button></div></details>`,
-    `<h2>Verifica con un codice</h2><p>Il PC invia un codice al telefono scelto. Inserendolo qui dimostri che stai parlando con <b>quel</b> telefono e non con un altro dispositivo in rete.</p>
+    `<h2>Verifica con un codice (facoltativa)</h2><p>Il PC invia un codice allo smartphone scelto. Inserendolo qui dimostri che stai parlando con <b>quel</b> dispositivo e non con un altro in rete.</p>
      <div class="wbox"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button class="btn primario" id="wizInvia">Invia codice al telefono</button><span id="wizStato" class="vuoto"></span></div>
-       <p class="vuoto" style="margin-top:10px;font-size:13.5px">Sul telefono compare un messaggio «Pixel Hub — codice di verifica». Se LocalSend lo chiede, tocca <b>Accetta</b>.</p></div>
+       <p class="vuoto" style="margin-top:10px;font-size:13.5px">Sul telefono compare un messaggio «Cable — codice di verifica». Se LocalSend lo chiede, tocca <b>Accetta</b>.</p></div>
      <div class="wbox"><label style="display:block;font-size:13.5px;color:var(--txt2);margin-bottom:8px">Codice di 6 cifre ricevuto sul telefono</label>
        <input class="input wcode" id="wizCode" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="——————">
        <div style="display:flex;gap:10px;margin-top:12px;align-items:center"><button class="btn primario" id="wizVerifica">Verifica</button><span id="wizCount" class="vuoto"></span></div>

@@ -1,73 +1,85 @@
-# Checklist manuale con client ufficiali
+# Checklist manuale (richiede hardware esterno)
 
-Nessuna di queste prove è stata eseguita: servono un Pixel/Android reale, un iPhone e la rete Wi-Fi di casa.
-Segna ogni riga con data, versione dell'app LocalSend sul telefono e esito. Con `HUB_DEBUG=1` Pixel Hub
-stampa su stderr le richieste (mai PIN né token).
+Spunta e annota data, modello, versione dell'app. **Nulla qui è stato eseguito**: sono le prove che i test automatici non possono sostituire.
+Parti da zero con `scripts/dev.sh sandbox` (dati isolati) o con una HOME pulita. Per leggere cosa succede: `HUB_DEBUG=1`.
 
-Preparazione: Pixel Hub 5 su Fedora (`scripts/dev.sh run`), LocalSend **ufficiale** sul telefono, stessa rete,
-LocalSend per PC chiuso, cifratura HTTPS attiva sul telefono.
+## 1. Linux ↔ Android con LocalSend ufficiale
+- [ ] Lo smartphone compare in *Condividi* entro 10 s dall'apertura di LocalSend; il PC compare nell'app col nome scelto (cambiandolo si aggiorna).
+- [ ] Il certificato ECDSA di Cable è accettato dall'app (primo invio in entrambe le direzioni).
+- [ ] Android → PC, 1 foto: richiesta con mittente/dimensione corrette, Accetta, file integro (`sha256sum`).
+- [ ] Android → PC, 5 file: accettazione **parziale** (togli 2): arrivano 3; l'app non dà «completato» per i 5.
+- [ ] Android → PC, testo: richiesta «messaggio», compare in Messaggi, Copia funziona.
+- [ ] PC → Android: file, testo, cartella (struttura conservata); il telefono chiede conferma; file integro.
+- [ ] A fine ricezione sul PC: **Apri** apre il file, **Mostra nella cartella** lo evidenzia in Nautilus; anche dai pulsanti della notifica.
+- [ ] Nomi con accenti, emoji, spazi, caratteri speciali, file da 0 byte; due volte lo stesso file → `nome (1).ext`, nessun sovrascritto.
+- [ ] File ≥ 2 GB nei due versi: avanzamento, velocità e **tempo residuo** sensati (compare solo dopo qualche secondo), memoria stabile (`ps -o rss`).
+- [ ] PIN sul telefono (invio dal PC) e PIN in Cable (ricezione): errato e poi giusto.
 
-## W. Wizard di primo collegamento (nuovo nella 5.0)
-Parti da zero: `scripts/dev.sh sandbox` (dati isolati) oppure rinomina temporaneamente `~/.config/pixel-hub`.
+## 2. Linux ↔ iPhone/iPad con LocalSend ufficiale
+- [ ] Scoperta, invio e ricezione di foto/video (anche HEIC; 1 e 10 elementi), PIN, rifiuto.
+- [ ] Con l'app in background o lo schermo spento: annota il comportamento (iOS sospende la ricezione).
+- [ ] **Senza adb e scrcpy installati** l'onboarding completo funziona senza errori e senza schede Android.
+
+## 3. Due smartphone contemporaneamente
+- [ ] Android + iPhone (o due Android) in elenco: nessun invio parte «da solo» (si sceglie); un rilascio sulla finestra apre la scelta del destinatario.
+- [ ] Rilascio **su un dispositivo**: l'invio parte verso quello giusto.
+- [ ] Richiesta contemporanea da due mittenti: la seconda attende o riceve 409; nessuna mescolanza di file.
+
+## 4. Dispositivi con nomi identici
+- [ ] Due telefoni chiamati uguale (es. «iPhone»): in elenco hanno etichette diverse con le prime cifre dell'impronta; l'invio va a quello scelto
+      (verifica sul telefono). Nessun avviso di «cambio d'identità» (sono contemporanei).
+- [ ] Reinstalla l'app su un telefono confermato (nuovo certificato, stesso nome): compare l'avviso di identità diversa, il vecchio record non cambia,
+      il nuovo non è «confermato»; «Ignora» lo nasconde, «Sostituisci» sposta il record senza confermarlo.
+
+## 5. Cambio IP, rete e sospensione
+- [ ] Cambia IP del telefono (riconnetti il Wi-Fi): dopo pochi secondi è ancora un solo dispositivo; l'invio funziona subito.
+- [ ] Wi-Fi → cavo (o hotspot del telefono): entro ~5 s il PC si riannuncia; i dispositivi della vecchia rete non sono più «vicini».
+- [ ] Sospendi il PC (chiudi il coperchio) e riprendi: entro ~5 s i telefoni riappaiono e la ricezione funziona. Con `HUB_DEBUG=1` verifica che compaia
+      «eventi D-Bus: in ascolto» (altrimenti Diagnostica deve dire che resta il controllo periodico).
+- [ ] Con una VPN attiva e/o Docker/libvirt: elenco e «Indirizzi del PC» non mostrano interfacce virtuali; l'hotspot si trova.
+- [ ] Un'altra distribuzione/desktop (se ti serve): annota requisiti mancanti e se funzionano notifiche, «Apri», tray/background.
+
+## 6. Destinatario offline
+- [ ] Chiudi l'app sul telefono e prova a inviare: errore **entro pochi secondi** (non dopo gli hash), con indirizzo, fatto osservato e più cause
+      possibili; **non** attribuisce il problema al solo firewall. *Aggiorna* mostra «visto, ma non risponde» (vicino ≠ raggiungibile).
+
+## 7. Rifiuto e annullamento
+- [ ] Rifiuto sul telefono: il PC mostra «Rifiutato dal destinatario» (≠ «Annullato»).
+- [ ] Rifiuto sul PC (ricezione): il telefono mostra rifiutato.
+- [ ] Annulla durante l'invio dal PC; annulla dal telefono; annulla la ricezione dal PC: nessun `.cable-*.part` resta nella cartella.
+- [ ] Lascia scadere la decisione (non accettare): il PC mostra «Scaduto», non un errore generico.
+
+## 8. Trasferimento parzialmente completato
+- [ ] Invia ~10 file e spegni il Wi-Fi del telefono a metà: stato **Interrotto**, esito per file, nessun parziale sul PC.
+- [ ] «**Riprova i file non completati**»: partono solo i non completati, i riusciti non si rimandano; se il telefono aveva già ricevuto l'ultimo file
+      compare la nota di esito incerto e, riprovando, un eventuale doppione si chiama `nome (1).ext` (mai sovrascritto).
+
+## 9. Porta occupata da un'altra istanza
+- [ ] Con LocalSend per PC aperto: Cable segnala «porta occupata», dopo averlo chiuso *Riprova* funziona.
+- [ ] Con **Pixel Hub 5.0** aperto: `cable` rifiuta di partire con un messaggio chiaro (codice 3).
+- [ ] Due volte `cable file1`: una sola istanza; la seconda inoltra i file e si apre la scelta del destinatario (senza tornare alla Home).
+
+## 10. Migrazione da Pixel Hub (sul tuo sistema reale)
+- [ ] Chiudi Pixel Hub, `scripts/installa-utente.sh`: «Cable» e l'icona compaiono nel menu; il vecchio lanciatore non c'è più.
+- [ ] Primo avvio: avviso di importazione; il telefono già collegato **non** chiede un nuovo collegamento e il fingerprint mostrato è lo stesso di prima.
+- [ ] Con *Avvia all'accensione* attivo in Pixel Hub: dopo il login parte Cable (non Pixel Hub); un solo `cable` in esecuzione.
+- [ ] `scripts/installa-utente.sh rimuovi` → Pixel Hub di nuovo avviabile con i suoi dati.
+- [ ] In Nautilus: tasto destro su un file › Scripts › Invia con Cable → si apre la scelta del destinatario.
+
+## 11. Wizard e sicurezza
 - [ ] Il wizard si apre da solo al primo avvio; *Salta per ora* lo chiude e non ricompare; da Impostazioni si riapre.
-- [ ] Passo 1: i controlli (rete/ricezione/identità) sono veritieri; con LocalSend per PC aperto segnala la porta occupata.
-- [ ] Passo 2: il telefono reale compare entro ~10 s; con due telefoni vicini «Avanti» resta spento finché non ne scegli uno.
-- [ ] Passo 3: il messaggio «Pixel Hub — codice di verifica» arriva sul telefono (annota se serve toccare *Accetta* in LocalSend);
-      un codice sbagliato scala i tentativi; il codice giusto conferma; dopo 5 errori serve un nuovo codice; dopo 5 minuti scade.
-- [ ] Passo 3 con il telefono **sbagliato** scelto: il codice non compare sul telefono che hai in mano → la verifica non si può completare (è il punto).
-- [ ] Passo 4: dal telefono, *Invia › Testo* al PC; la richiesta compare sopra il wizard; dopo *Accetta* il passo risulta riuscito.
-- [ ] Passo 5: nome, cartella, PIN e avvio automatico applicati (verifica `~/.config/pixel-hub/settings.json`: il PIN deve essere solo un hash).
-- [ ] Dopo il wizard il telefono è «Preferito» e «Identità verificata»; riavviando l'app resta preferito ma «Identità verificata» riparte da no.
-- [ ] Il codice non compare in *Trasferimenti*, in `settings.json` né nei log (`HUB_DEBUG=1`).
+- [ ] Passo 3: il messaggio «Cable — codice di verifica» arriva (annota se serve toccare *Accetta*); codice sbagliato scala i tentativi; dopo 5 errori
+      o 5 minuti serve un nuovo codice; scegliendo il telefono **sbagliato** il codice non compare sul telefono in mano (è il punto).
+- [ ] Dopo il wizard il dispositivo è «Confermato»; **un preferito che invia non viene mai accettato in automatico**.
+- [ ] Il PIN e il codice non compaiono in `~/.config/cable/settings.json` (solo hash), né in *Trasferimenti*, né nei log.
 
-## A. Android (LocalSend ufficiale)
-- [ ] Il telefono compare in *Condividi* entro 10 s dall'apertura di LocalSend (multicast).
-- [ ] Il PC compare nel telefono con il nome scelto in Impostazioni; cambiando nome si aggiorna.
-- [ ] Telefono → PC, 1 foto: richiesta con mittente/dimensione corrette, Accetta, file integro (confronta `sha256sum`).
-- [ ] Telefono → PC, 5 file misti: accettazione **parziale** (togli 2): arrivano solo i 3; il telefono non mostra «completato» per i 5.
-- [ ] Telefono → PC, testo: richiesta «messaggio», dopo Accetta compare in Messaggi; Copia funziona.
-- [ ] PC → telefono, file e testo: il telefono chiede conferma; il file è integro.
-- [ ] PC → telefono, cartella: struttura delle sottocartelle conservata.
-- [ ] Rifiuto: sul PC (Rifiuta) il telefono mostra «rifiutato»; sul telefono (Rifiuta) il PC mostra «Rifiutato».
-- [ ] PIN: imposta un PIN sul **telefono** (LocalSend › Impostazioni › PIN), invia dal PC: compare la richiesta PIN; PIN errato → richiesta di nuovo; PIN giusto → prosegue. Verifica che il PIN non compaia in `~/.config/pixel-hub/settings.json`.
-- [ ] PIN in ricezione: imposta un PIN in Pixel Hub, invia dal telefono: LocalSend chiede il PIN; errato e poi giusto.
-- [ ] File grande (≥ 2 GB) in entrambe le direzioni: avanzamento e velocità sensati, memoria di Pixel Hub stabile (`ps -o rss`), file integro.
-- [ ] Annulla durante l'invio dal PC; annulla dal telefono; annulla la ricezione dal PC: nessun `.pixelhub-*.part` resta nella cartella.
-- [ ] Rete interrotta a metà (spegni il Wi-Fi del telefono): errore comprensibile, nessun file parziale, nuovo invio possibile.
-- [ ] Sospensione/ripresa del PC durante l'attesa: dopo ~5 s il telefono riricompare e la ricezione funziona.
-- [ ] Riavvio: chiudi con *Esci*, riavvia, ripeti un invio. Con *Avvia all'accensione* attivo: dopo il login Pixel Hub è pronto a ricevere a finestra chiusa e arriva la notifica con Accetta/Rifiuta.
-- [ ] Nome duplicato: invia due volte lo stesso file: nascono `nome.ext` e `nome (1).ext`, nessuno sovrascritto.
-- [ ] Nomi con accenti, emoji, spazi e file vuoto (0 byte).
+## 12. Desktop (GNOME)
+- [ ] L'icona (la «C» blu col cavo) è quella in overview/dock/finestra (`StartupWMClass=cable`).
+- [ ] Notifica con **Accetta/Rifiuta** (finestra chiusa e non in primo piano); notifica di fine con **Mostra nella cartella** e **Apri** (un solo file).
+- [ ] `--background`: nessuna finestra, ma si riceve e arriva la notifica. Chiudi finestra ≠ esci.
+- [ ] Trascina file da Nautilus sulla finestra e su un dispositivo (il gesto reale; l'evento è provato solo a livello di pagina).
+- [ ] Tema chiaro/scuro seguito in Automatico.
 
-## B. iOS (LocalSend ufficiale)
-- [ ] Scoperta, invio e ricezione di foto/video (anche HEIC, 1 e 10 elementi), PIN, rifiuto.
-- [ ] iPhone con app in background/schermo spento: comportamento documentato (iOS sospende la ricezione).
-
-## C. Più dispositivi e preferiti
-- [ ] Due telefoni insieme: nessun invio parte «da solo» verso uno dei due (serve sceglierne uno in *Condividi*).
-- [ ] Stella: il preferito resta in elenco, grigio, quando il telefono è spento; *Dimentica* lo toglie.
-- [ ] Richiesta contemporanea da due mittenti: la seconda riceve 409 o attende; nessuna mescolanza di file.
-- [ ] Un preferito che invia **non** viene accettato in automatico.
-
-## D. Rete e firewall
-- [ ] Con LocalSend per PC aperto: Pixel Hub segnala «porta occupata» e dopo averlo chiuso *Riprova* funziona.
-- [ ] Con firewalld attivo: se il telefono non compare, *Diagnostica* distingue le cause; applica `firewall-cmd` solo alla zona della rete fidata (porte 53317 TCP/UDP) e verifica.
-- [ ] Hotspot del telefono; Wi-Fi ospiti con isolamento client (atteso: non trovato → IP manuale non funziona neppure).
-- [ ] Cambio rete (Wi-Fi → cavo): riannuncio automatico entro ~3 s.
-
-## E. Desktop (GNOME) — Tauri/GTK3
-- [ ] L'icona nel dock/overview è quella di Pixel Hub (la finestra ha classe `pixel-hub`, il lanciatore `StartupWMClass=pixel-hub`).
-- [ ] Notifica con **Accetta/Rifiuta** (finestra chiusa e con finestra non in primo piano): i pulsanti agiscono; il click sul corpo apre l'app.
-- [ ] Notifica «Apri cartella» a ricezione completata.
-- [ ] Avvio con `--background`: nessuna finestra, ma si riceve e arriva la notifica.
-- [ ] `pixel-hub file1 file2` con l'app già aperta → una sola istanza, file in coda in *Condividi*.
-- [ ] Trascina file da Nautilus sulla finestra e **su un dispositivo** (evento nativo di Tauri con percorsi reali: la consegna alla pagina è provata, il gesto reale da Nautilus no).
-- [ ] `pixel-hub file1 file2` con app aperta: file in coda in *Condividi*, nessuna seconda istanza.
-- [ ] Notifica con *Accetta/Rifiuta* e *Apri cartella* (anche con finestra chiusa).
-- [ ] Chiudi finestra ≠ esci; *Esci* e Ctrl+Q chiudono davvero; con *Resta pronta* disattivato la X esce.
-- [ ] Tema chiaro/scuro di GNOME seguito in modalità Automatico.
-
-## F. Android opzionale (cavo)
-- [ ] ADB: batteria/spazio, importazione DCIM (idempotente), con un solo dispositivo collegato; con due dispositivi l'app si ferma con un messaggio chiaro.
-- [ ] scrcpy: avvio/arresto dal pulsante.
-- [ ] Senza ADB/scrcpy installati: l'app parte e i trasferimenti Wi-Fi funzionano.
+## 13. Strumenti Android facoltativi (cavo)
+- [ ] ADB: batteria/spazio, importazione DCIM idempotente; con due dispositivi l'app si ferma con un messaggio chiaro. scrcpy: avvio/arresto.
+- [ ] Senza ADB/scrcpy l'app parte, i trasferimenti Wi-Fi funzionano e le schede «Schermo»/«Android USB» non compaiono.

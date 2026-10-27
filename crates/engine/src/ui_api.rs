@@ -34,6 +34,13 @@ pub async fn chiama(e: &Arc<Engine>, host: &dyn Host, metodo: &str, a: Value) ->
             if let Some(i) = ip { if i.parse::<std::net::Ipv4Addr>().is_err() { return json!({"ok": false, "errore": "Indirizzo IP non valido"}); } }
             json!({"ok": true, "trovati": e.cerca(ip, None).await})
         }
+        "aggiorna" => json!({"ok": true, "risposto": e.aggiorna().await}),
+        "riprova" => match e.riprova(s(&a, "id")) {
+            Ok((id, saltati)) => json!({"ok": true, "id": id, "saltati": saltati}),
+            Err(er) => json!({"ok": false, "errore": er}),
+        },
+        "identita_ignora" => ok(e.identita_ignora(s(&a, "fp"))),
+        "identita_sostituisci" => ok(e.identita_sostituisci(s(&a, "antico"), s(&a, "nuovo"))),
         "invia" => {
             let paths: Vec<String> = a["percorsi"].as_array().map(|v| v.iter().filter_map(|p| p.as_str().map(String::from)).collect()).unwrap_or_default();
             match e.invia(s(&a, "fp"), &paths, a["testo"].as_str().map(String::from)) {

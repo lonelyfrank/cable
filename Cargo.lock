@@ -350,6 +350,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "cable"
+version = "6.0.0"
+dependencies = [
+ "cairo-rs",
+ "gio",
+ "notify-rust",
+ "pixelhub-engine",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-single-instance",
+ "tempfile",
+ "tokio",
+ "webkit2gtk",
+]
+
+[[package]]
 name = "cairo-rs"
 version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2578,27 +2597,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixel-hub"
-version = "5.0.0"
-dependencies = [
- "cairo-rs",
- "gio",
- "notify-rust",
- "pixelhub-engine",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-single-instance",
- "tempfile",
- "tokio",
- "webkit2gtk",
-]
-
-[[package]]
 name = "pixelhub-engine"
-version = "5.0.0"
+version = "6.0.0"
 dependencies = [
  "bytes",
  "chrono",
@@ -2626,6 +2626,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-util",
+ "zbus",
 ]
 
 [[package]]

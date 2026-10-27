@@ -1,11 +1,13 @@
 # Procedura guidata di primo collegamento
 
 Si apre da sola al primo avvio (`wizard_fatto = false`) e si riapre da *Impostazioni › Collega un telefono*.
-È **sempre saltabile**: i trasferimenti funzionano anche senza. Cinque passi.
+È **sempre saltabile**: i trasferimenti funzionano anche senza, e la verifica con codice (passo 3) è facoltativa per l'uso:
+serve solo a confermare che l'impronta appartiene allo smartphone che hai in mano. Non usa ADB né scrcpy, quindi vale
+uguale per Android e iPhone/iPad. Cinque passi.
 
 | # | Passo | Cosa fa il programma | Cosa fa l'utente |
 |---|---|---|---|
-| 1 | **Prepara** | Controlla rete, ricezione attiva (porta 53317, TLS) e identità valida; se la porta è occupata lo dice e offre *Riprova* | Apre LocalSend sul telefono, stessa Wi-Fi, cifratura attiva, scheda «Ricevi» |
+| 1 | **Prepara** | Controlla rete, ricezione attiva (porta 53317, TLS) e identità valida; se la porta è occupata lo dice e offre *Riprova* | Apre LocalSend (o un'app compatibile) sullo smartphone, stessa Wi-Fi, cifratura attiva, scheda «Ricevi» |
 | 2 | **Trova** | Mostra i dispositivi LocalSend vicini (multicast) + ricerca per IP | **Sceglie lui** il telefono. Nessuna scelta automatica; «Avanti» resta spento finché non sceglie |
 | 3 | **Verifica** | Invia al telefono scelto, via LocalSend e con **impronta del certificato controllata**, un codice a 6 cifre (valido 5 minuti, 5 tentativi) | Legge il codice sul telefono e lo digita sul PC |
 | 4 | **Prova** | Si mette in ascolto: segna riuscita la prova quando dal dispositivo arriva qualcosa e **l'utente lo accetta** | Dal telefono invia un testo al PC e accetta la richiesta |

@@ -1,22 +1,40 @@
-# Tornare a una versione precedente conservando i dati
+# Migrazione da Pixel Hub e ritorno indietro
 
-Le versioni 3.x e 4.x (Python) e 5.0 (Rust) **non cancellano né modificano i dati le une delle altre**:
-`~/.local/share/pixel-hub/` (script 3.x), `~/.config/pixel-hub-v3/` e `~/.cache/pixel-hub-v3/` (config e certificato 3.x),
-cartelle di file e foto. Le cose della 4.x/5.0 stanno in `~/.config/pixel-hub/` (impostazioni e `backups/`) e
-`~/.local/share/pixel-hub/identity/` (identità, **copiata** dalla 3.x).
+## Cosa fa Cable al primo avvio (e a ogni avvio, senza effetti se già fatto)
 
-La 5.0 legge e scrive lo stesso `settings.json` (schema 4) della 4.0 Python: si può passare dall'una all'altra.
-Chiavi nuove della 5.0 (`wizard_fatto`, `preferiti[*].confermato`): la 4.0 Python le ignora e può scartarle se riscrive il file.
-Le identità create dalla 5.0 sono ECDSA P-256, quelle delle versioni Python RSA 2048: entrambe sono lette da entrambe le versioni.
+| Elemento | Origine (Pixel Hub 5.0) | Destinazione (Cable) | Regola |
+|---|---|---|---|
+| Impostazioni, dispositivi ricordati, conferme, PIN (hash) | `~/.config/pixel-hub/settings.json` | `~/.config/cable/settings.json` | copia; l'originale è salvato anche in `~/.config/cable/backups/settings-pixel-hub-*.json`; solo il nome predefinito «Fedora Pixel Hub» è sostituito |
+| Identità TLS (certificato + chiave) | `~/.local/share/pixel-hub/identity/` | `~/.local/share/cable/identity/` | copia byte per byte (**stessa impronta**), chiave 0600; mai rigenerata in automatico |
+| Avvio automatico | `~/.config/autostart/it.frank.PixelHub.desktop` | `~/.config/autostart/it.frank.Cable.desktop` | copia di sicurezza in `backups/autostart-pixel-hub-*.desktop`, poi si toglie il vecchio per non avviare due app |
+| Lanciatore | `~/.local/share/applications/it.frank.PixelHub.desktop` | `…/it.frank.Cable.desktop` | lo fa `scripts/installa-utente.sh`: salva il vecchio in `~/.local/share/cable-launcher-backup/` |
+| File ricevuti | cartella scelta in Pixel Hub | invariata | il percorso è nelle impostazioni, nulla si sposta |
 
-1. Chiudi Pixel Hub 5: *Impostazioni › Esci* (o `pkill -x pixel-hub`).
-2. Installata con `scripts/installa-utente.sh`: `scripts/installa-utente.sh rimuovi` (rimuove il binario e il lanciatore 5.0,
-   **ripristina** il lanciatore e l'avvio automatico precedenti dalle copie salvate). Installata via RPM: `sudo dnf remove pixel-hub`.
-3. Per la 4.0 Python: `legacy/python/scripts/installa-utente.sh` (richiede le dipendenze Python/GTK4: vedi `legacy/python/`).
-   Per la 3.x: `bash reference/installa-pixel-hub-fedora.sh` (ricrea script e lanciatore; riusa la configurazione `pixel-hub-v3`).
-4. Avvia la versione scelta dal menu. Il telefono associato (3.x) o i preferiti (4.x/5.0) e le cartelle sono quelli di prima.
+* **Si copia, non si sposta:** le vecchie cartelle non vengono né modificate né cancellate.
+* **Mai sovrascrivere:** se esiste già un file di Cable (impostazioni o identità), vince quello di Cable; la migrazione lo segnala
+  una volta e non tocca nulla. Una seconda esecuzione non cambia niente (provato con test automatici e sui dati reali, in copia).
+* **Impostazioni illeggibili** nel vecchio Pixel Hub: Cable parte con i predefiniti e lo dice; l'originale resta.
+* Stato della migrazione: `~/.config/cable/migrazione-pixel-hub.json`. `cable --migra` la esegue/mostra senza aprire la finestra.
 
-Cosa **non** torna indietro: preferiti confermati dal wizard, PIN e impostazioni cambiati *dopo* la migrazione (la 3.x non li conosce);
-restano comunque in `~/.config/pixel-hub/` e nei suoi `backups/`. Non avviare due versioni insieme: usano la stessa porta
-(la 5.0 e la 4.0 rifiutano di partire se vedono una versione Python in esecuzione).
-Per ripartire da zero senza perdere nulla: *Impostazioni › Ripristina impostazioni* (backup automatico; file e identità intatti).
+## Tornare a Pixel Hub
+
+1. Chiudi Cable (*Impostazioni › Esci*).
+2. `scripts/installa-utente.sh rimuovi`: toglie Cable, ripristina il lanciatore e l'avvio automatico di Pixel Hub dalle copie.
+   Installato via RPM: `sudo dnf remove cable`.
+3. Avvia Pixel Hub: le sue cartelle (`~/.config/pixel-hub`, `~/.local/share/pixel-hub`) sono come le hai lasciate, identità inclusa.
+
+Cosa **non** torna indietro: i dispositivi ricordati, le conferme, il PIN e le impostazioni cambiati *dopo* la migrazione stanno in
+`~/.config/cable/` e Pixel Hub non li vede. Per riportarli indietro a mano: copia `~/.config/cable/settings.json` su
+`~/.config/pixel-hub/settings.json` (formato compatibile; le chiavi nuove vengono ignorate).
+**Non avviare Cable e Pixel Hub insieme**: usano la stessa porta (Cable rifiuta di partire se vede Pixel Hub in esecuzione).
+Se avevi lasciato che **entrambi** usassero la stessa identità, nulla si rompe: sono due copie dello stesso certificato.
+
+## Cambiare identità apposta
+
+*Impostazioni › Rigenera identità*: i telefoni vedranno un dispositivo nuovo. I vecchi file restano in `identity/backup-*`.
+*Impostazioni › Ripristina impostazioni*: copia automatica in `backups/`, file ricevuti e identità intatti.
+
+## Versioni più vecchie (3.x e 4.x Python)
+
+Le versioni Python usano `~/.config/pixel-hub-v3/` e `~/.config/pixel-hub/`; Cable non le modifica. La 4.x Python legge ancora il
+vecchio `settings.json` di Pixel Hub (schema 4). Per la 3.x: `bash reference/installa-pixel-hub-fedora.sh`.

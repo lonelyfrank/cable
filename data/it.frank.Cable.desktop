@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Cable
+GenericName=Condivisione file
+Comment=Invia e ricevi file e testi fra Linux e smartphone Android/iOS (protocollo LocalSend)
+Exec=cable %F
+Icon=it.frank.Cable
+Terminal=false
+Categories=Network;FileTransfer;GTK;
+Keywords=cable;localsend;airdrop;android;iphone;ios;smartphone;file;condividi;trasferimento;
+StartupWMClass=cable
+StartupNotify=true

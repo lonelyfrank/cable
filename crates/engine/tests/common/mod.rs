@@ -62,7 +62,7 @@ pub fn job(e: &Engine, jid: &str) -> Value {
 }
 
 pub async fn wait_job(e: &Engine, jid: &str, secs: f64) -> Value {
-    wait_for(|| async { let j = job(e, jid); (j != Value::Null && ["completato", "parziale", "rifiutato", "annullato", "errore"].contains(&j["stato"].as_str().unwrap())).then_some(j) }, secs).await
+    wait_for(|| async { let j = job(e, jid); (j != Value::Null && ["completato", "parziale", "rifiutato", "annullato", "scaduto", "interrotto", "errore"].contains(&j["stato"].as_str().unwrap())).then_some(j) }, secs).await
 }
 
 pub fn sparse(path: &Path, size: u64) {
@@ -80,3 +80,6 @@ pub fn make(rig: &Rig, name: &str, data: &[u8]) -> PathBuf {
 pub fn rss_hwm_kb() -> u64 {
     std::fs::read_to_string("/proc/self/status").unwrap().lines().find(|l| l.starts_with("VmHWM")).and_then(|l| l.split_whitespace().nth(1)).and_then(|v| v.parse().ok()).unwrap()
 }
+
+/// I test con file enormi non girano insieme: la memoria di picco (VmHWM) è del processo, non del singolo test.
+pub static BIG: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());

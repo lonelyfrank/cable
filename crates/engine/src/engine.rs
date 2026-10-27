@@ -71,8 +71,27 @@ impl Engine {
         self.receiver.pulisci_residui();
         desktop::migra_avvio_automatico(&self.sh.paths);
         let ok = self.avvia_server().await;
+        self.sh.registry.seed_remembered();
         self.discovery.start();
         self.android.start();
+        // dopo ogni cambio di rete/ripresa: svuota le cache di rete, riavvia il server se era caduto, riverifica i dispositivi
+        let me = self.clone();
+        tokio::spawn(async move {
+            let mut rx = me.sh.bus.subscribe();
+            loop {
+                let t = tokio::select! { _ = me.cancel.cancelled() => return, t = rx.recv() => t };
+                match t {
+                    Ok("rete") | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                        { let mut c = me.cache.lock().unwrap(); c.remove("rete_ip"); c.remove("rete_nome"); }
+                        if !me.server_attivo() { me.avvia_server().await; me.sh.bus.emit("server"); }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
+                    _ => {}
+                }
+            }
+        });
+        let d = self.discovery.clone();
+        tokio::spawn(async move { d.refresh().await; });
         let me = self.clone();
         tokio::spawn(async move {
             loop {
@@ -107,12 +126,16 @@ impl Engine {
         if let Some(h) = self.server.lock().await.take() { h.stop().await; }
     }
 
-    /// Cambio rete o ripresa dalla sospensione: riannuncia e, se serve, riavvia il server.
-    pub async fn rete_cambiata(self: &Arc<Self>) {
-        self.cache.lock().unwrap().remove("rete_ip");
-        self.discovery.rete_cambiata();
-        self.avvia_server().await;
+    fn server_attivo(&self) -> bool { self.server.try_lock().map(|g| g.is_some()).unwrap_or(true) }
+
+    /// «Aggiorna» (manuale): riannuncia, riverifica i dispositivi noti su tutti i loro indirizzi e, se serve, riavvia il server.
+    /// Restituisce quanti dispositivi hanno risposto.
+    pub async fn aggiorna(self: &Arc<Self>) -> usize {
+        { let mut c = self.cache.lock().unwrap(); c.remove("rete_ip"); c.remove("rete_nome"); }
+        if !self.server_attivo() { self.avvia_server().await; }
+        let n = self.discovery.refresh().await;
         self.sh.bus.emit("server");
+        n
     }
 
     // ------------------------------------------------------------------ azioni
@@ -123,14 +146,28 @@ impl Engine {
     }
 
     pub fn invia(self: &Arc<Self>, fp: &str, percorsi: &[String], testo: Option<String>) -> Result<String, String> {
-        let dev = self.sh.registry.get(fp).ok_or("Dispositivo non raggiungibile: apri LocalSend sul destinatario.")?;
+        let dev = self.sh.registry.get(fp).ok_or("Dispositivo non trovato: apri l'app compatibile (ad es. LocalSend) sul destinatario e premi «Aggiorna».")?;
         if self.sh.identity.read().unwrap().stato != "ok" { return Err("Identità non valida: rigenerala dalle Impostazioni.".into()); }
         let testo = testo.filter(|t| !t.trim().is_empty());
         self.sender.invia(&dev, percorsi, testo, false)
     }
 
+    /// «Riprova i file non completati» di un invio terminato (nuovo invio verso lo stesso dispositivo).
+    pub fn riprova(self: &Arc<Self>, jid: &str) -> Result<(String, Vec<String>), String> {
+        if self.sh.identity.read().unwrap().stato != "ok" { return Err("Identità non valida: rigenerala dalle Impostazioni.".into()); }
+        let fp = self.sender.fp_di(jid).ok_or("Trasferimento non trovato")?;
+        self.sender.riprova(jid, self.sh.registry.get(&fp))
+    }
+
+    /// Un dispositivo ricordato si ripresenta con un'impronta diversa e l'utente decide che è lo stesso: il nuovo prende il
+    /// posto del vecchio nell'elenco, senza ereditare la conferma.
+    pub fn identita_sostituisci(&self, old_fp: &str, new_fp: &str) -> bool { self.sh.registry.replace_remembered(old_fp, new_fp) }
+    /// L'utente ha letto l'avviso di cambio d'identità e non vuole altro: il vecchio record resta com'è.
+    pub fn identita_ignora(&self, new_fp: &str) -> bool { self.sh.registry.dismiss_change(new_fp) }
+
     pub fn decidi(&self, rid: &str, accetta: Option<Vec<String>>) -> bool { self.receiver.decide(rid, accetta) }
 
+    /// La stella è solo una scorciatoia (ordine e accesso rapido): non autorizza nulla, non conferma l'identità.
     pub fn preferito(&self, fp: &str, on: bool) -> bool {
         let d = self.sh.registry.get(fp);
         let ok = self.sh.settings.preferito(fp, on, d.as_ref().map(|d| (d.alias.as_str(), d.ip.as_str(), d.port)));
@@ -140,7 +177,7 @@ impl Engine {
 
     /// Toglie il dispositivo dai preferiti e dall'elenco (ricomparirà se annuncia di nuovo).
     pub fn dimentica(&self, fp: &str) -> bool {
-        self.sh.settings.preferito(fp, false, None);
+        self.sh.settings.dimentica(fp);
         self.sh.registry.remove(fp);
         true
     }
@@ -174,7 +211,7 @@ impl Engine {
         self.sh.registry.set_own_fp(&self.sh.fingerprint());
         self.sh.registry.clear();
         let ok = self.avvia_server().await;
-        self.discovery.rete_cambiata();
+        self.discovery.announce(true).await;            // con il nuovo certificato
         self.sh.bus.emit("server");
         ok
     }
@@ -191,7 +228,7 @@ impl Engine {
             w.pending = Some(Challenge { fp: dev.fp.clone(), alias: dev.alias.clone(), ip: dev.ip.clone(), port: dev.port, code: code.clone(), created: Instant::now(), tries: w.pending.as_ref().filter(|c| c.fp == dev.fp).map_or(0, |c| c.tries) });
             code
         };
-        let msg = format!("Pixel Hub — codice di verifica: {code}. Inseriscilo solo nel PC Fedora che hai davanti. Scade tra 5 minuti.");
+        let msg = format!("Cable — codice di verifica: {code}. Inseriscilo solo in Cable sul PC che hai davanti. Scade tra 5 minuti.");
         let id = self.sender.invia(&dev, &[], Some(msg), true)?;
         self.wizard.lock().unwrap().job = Some(id);
         self.sh.bus.emit("wizard");
@@ -216,7 +253,7 @@ impl Engine {
         w.confermato_fp = Some(fp.clone());
         drop(w);
         self.sh.settings.conferma_dispositivo(&fp, &alias, &ip, port);
-        self.sh.registry.mark_verified(&fp);
+        self.sh.registry.mark_verified(&fp, Some(&ip));
         self.sh.bus.emit("dispositivi");
         self.sh.bus.emit("wizard");
         json!({"ok": true, "alias": alias})
@@ -270,18 +307,38 @@ impl Engine {
         Value::Array(v.into_iter().take(40).map(|x| x.1).collect())
     }
 
+    fn cambi_identita(&self) -> Value {
+        Value::Array(self.sh.registry.identity_changes().into_iter().map(|c| {
+            let vecchio_confermato = self.sh.settings.preferiti().get(&c.old_fp).map_or(false, |r| r["confermato"] == json!(true));
+            json!({"antico": c.old_fp, "nuovo": c.new_fp, "nome": c.alias, "ip": c.ip, "quando": c.when, "vecchio_confermato": vecchio_confermato})
+        }).collect())
+    }
+
+    /// Per le richieste in attesa aggiunge, se l'indirizzo del mittente corrisponde a un dispositivo già visto, chi è
+    /// *probabilmente*. Il mittente non è autenticato (LocalSend v2 non ha certificato client): è solo un'indicazione.
+    fn arricchisci_ricezioni(&self, ric: Value) -> Value {
+        let Value::Array(mut v) = ric else { return ric };
+        for r in v.iter_mut().filter(|r| r["stato"] == "attesa") {
+            if let Some(d) = self.sh.registry.find_by_ip(r["ip"].as_str().unwrap_or("")) {
+                let rec = self.sh.settings.preferiti().get(&d.fp).cloned();
+                r["noto"] = json!({"nome": d.alias, "ricordato": rec.is_some(), "confermato": rec.map_or(false, |x| x["confermato"] == json!(true))});
+            }
+        }
+        Value::Array(v)
+    }
+
     pub fn snapshot(&self) -> Value {
         let s = self.sh.settings.snapshot();
         let (ric, msg) = self.receiver.snapshot();
         let (adb, schermo) = self.android.snapshot();
         let id = self.sh.identity.read().unwrap();
-        let ips = self.cached("rete_ip", Duration::from_secs(15), || json!(local_ipv4().iter().map(|i| i.to_string()).collect::<Vec<_>>()));
-        let nome_rete = self.cached("rete_nome", Duration::from_secs(15), || json!(network_name()));
+        let ips = self.cached("rete_ip", Duration::from_secs(60), || json!(local_ipv4().iter().map(|i| i.to_string()).collect::<Vec<_>>()));
+        let nome_rete = self.cached("rete_nome", Duration::from_secs(60), || json!(network_name()));
         let mut conf = Map::new();
         for k in CONF_KEYS.iter().chain(["wizard_fatto"].iter()) { conf.insert(k.to_string(), s.get(*k).cloned().unwrap_or(Value::Null)); }
         json!({
             "versione": VERSION, "utente": nome_utente(), "conf": conf, "pin_impostato": !s["pin_ricezione"].is_null(),
-            "dispositivi": self.sh.registry.snapshot(), "ricezioni": ric, "messaggi": msg, "invii": self.sender.snapshot(),
+            "dispositivi": self.sh.registry.snapshot(), "cambi_identita": self.cambi_identita(), "ricezioni": self.arricchisci_ricezioni(ric), "messaggi": msg, "invii": self.sender.snapshot(),
             "server": {"attivo": self.server.try_lock().map(|g| g.is_some()).unwrap_or(true), "errore": *self.server_error.lock().unwrap(),
                        "porta": self.port(), "protocollo": "https"},
             "identita": {"stato": id.stato, "errore": id.errore, "impronta": id.fingerprint, "origine": id.origine},
@@ -302,22 +359,34 @@ impl Engine {
         let srv_on = self.server.try_lock().map(|g| g.is_some()).unwrap_or(true);
         let err = self.server_error.lock().unwrap().clone();
         let id = self.sh.identity.read().unwrap();
-        let mut l = vec![format!("Pixel Hub {VERSION} (Rust)")];
+        let mut l = vec![format!("Cable {VERSION} (Rust)")];
         if let Ok(t) = std::fs::read_to_string("/etc/fedora-release") { l.push(t.trim().to_string()); }
         l.push(format!("Server HTTPS: {} (porta {})", if srv_on { "attivo".to_string() } else { format!("SPENTO: {}", if err.is_empty() { "?" } else { &err }) }, self.port()));
         l.push(format!("Identità: {} {}", id.stato, if id.fingerprint.is_empty() { String::new() } else { format!("{}…", &id.fingerprint[..16]) }));
         l.push(format!("Indirizzi: {}", if ips.is_empty() { "nessuno".into() } else { ips.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(", ") }));
         let mc = self.discovery.errore.lock().unwrap().clone();
         l.push(format!("Multicast: {}", if mc.is_empty() { "ok" } else { &mc }));
+        l.push(format!("Eventi di rete: {}", match self.discovery.dbus.load(std::sync::atomic::Ordering::Relaxed) {
+            1 => "D-Bus (NetworkManager, logind) in ascolto, più controllo periodico ogni 5 s",
+            2 => "D-Bus non disponibile: solo controllo periodico delle interfacce ogni 5 s e rilevamento della ripresa dalla sospensione",
+            _ => "in avvio" }));
+        let nets = crate::discovery::local_nets();
+        if !nets.is_empty() { l.push(format!("Interfacce: {}", nets.iter().map(|n| format!("{} {}", n.name, n.ip)).collect::<Vec<_>>().join(", "))); }
+        let (vicini, ricordati) = {
+            let v = self.sh.registry.snapshot();
+            let a = v.as_array().cloned().unwrap_or_default();
+            (a.iter().filter(|d| d["vicino"] == json!(true)).count(), a.iter().filter(|d| d["ricordato"] == json!(true)).count())
+        };
+        l.push(format!("Dispositivi: {vicini} vicini, {ricordati} ricordati"));
         l.push(format!("Dispositivi visti: {}", self.sh.registry.len()));
         l.push(format!("Firewall: {}", zones.unwrap_or_else(|| "firewalld non interrogabile".into())));
         l.push(String::new());
         let mut hints = vec![];
         if ips.is_empty() { hints.push("Nessuna rete attiva: connettiti al Wi-Fi o all'hotspot del telefono.".to_string()); }
-        if err == "porta" { hints.push(format!("La porta {} è occupata, di solito da LocalSend per PC o da una vecchia versione di Pixel Hub: chiudila e premi Riprova.", self.port())); }
+        if err == "porta" { hints.push(format!("La porta {} è occupata, di solito da LocalSend per PC o da Pixel Hub 5.0 ancora aperto: chiudilo e premi Riprova.", self.port())); }
         if !mc.is_empty() { hints.push(format!("La scoperta automatica non parte ({mc}): puoi comunque inserire l'IP a mano.")); }
         if srv_on && self.sh.registry.is_empty() {
-            hints.push(format!("Nessun dispositivo visto. Cause possibili: LocalSend chiuso sul telefono, reti diverse, isolamento client del router, VPN, oppure firewall del PC (porta {} TCP/UDP): verifica una per volta, il firewall è solo una delle ipotesi.", self.port()));
+            hints.push(format!("Nessun dispositivo visto. Cause possibili: app compatibile (ad es. LocalSend) chiusa sullo smartphone, reti diverse, isolamento client del router, VPN, oppure firewall del PC (porta {} TCP/UDP): verifica una per volta, il firewall è solo una delle ipotesi.", self.port()));
         }
         if hints.is_empty() { l.push("• Nessun problema evidente.".into()); } else { for h in hints { l.push(format!("• {h}")); } }
         l.join("\n")
@@ -326,8 +395,8 @@ impl Engine {
 
 fn componenti() -> Value {
     json!([
-        {"id": "adb", "nome": "ADB", "ok": desktop::has_command("adb"), "desc": "Facoltativo: batteria, spazio e importazione DCIM via USB", "comando": "sudo dnf install android-tools"},
-        {"id": "scrcpy", "nome": "scrcpy", "ok": desktop::has_command("scrcpy"), "desc": "Facoltativo: schermo e controllo del telefono", "comando": "sudo dnf copr enable zeno/scrcpy && sudo dnf install scrcpy"},
+        {"id": "adb", "nome": "ADB", "ok": desktop::has_command("adb"), "desc": "Facoltativo, solo Android: batteria, spazio e importazione foto via USB. Non serve per inviare o ricevere", "comando": "sudo dnf install android-tools"},
+        {"id": "scrcpy", "nome": "scrcpy", "ok": desktop::has_command("scrcpy"), "desc": "Facoltativo, solo Android: schermo e controllo del telefono. Non serve per inviare o ricevere", "comando": "sudo dnf copr enable zeno/scrcpy && sudo dnf install scrcpy"},
     ])
 }
 

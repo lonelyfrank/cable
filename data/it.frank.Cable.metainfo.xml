@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>it.frank.Cable</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <name>Cable</name>
+  <summary>File e testi fra Linux e smartphone Android/iOS, via LocalSend</summary>
+  <description>
+    <p>Cable trasferisce file e testi fra Linux e smartphone Android o iOS sulla stessa rete locale con il protocollo LocalSend. Sullo smartphone serve un'app compatibile (ad es. LocalSend); nessun account, cloud o relay.</p>
+    <p>Ogni ricezione richiede una conferma esplicita, con accettazione anche parziale dei file. Funzioni Android opzionali: schermo con scrcpy e importazione delle foto via USB.</p>
+  </description>
+  <launchable type="desktop-id">it.frank.Cable.desktop</launchable>
+  <provides><binary>cable</binary></provides>
+  <categories><category>Network</category><category>FileTransfer</category></categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="6.0.0" date="2026-10-27"><description><p>Il progetto diventa Cable: indipendente dal produttore del telefono, migrazione dei dati da Pixel Hub, rilevamento di rete e sospensione, riprova dei file non completati.</p></description></release>
+  </releases>
+</component>

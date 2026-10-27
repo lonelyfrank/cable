@@ -141,8 +141,8 @@ impl Default for Progress { fn default() -> Self { Self::new() } }
 impl Progress {
     const WINDOW: Duration = Duration::from_secs(4);
     pub fn new() -> Self { Progress { inner: Mutex::new(ProgressInner { total: 0, samples: VecDeque::new() }) } }
-    pub fn add(&self, n: u64) {
-        let now = Instant::now();
+    pub fn add(&self, n: u64) { self.add_at(Instant::now(), n) }
+    fn add_at(&self, now: Instant, n: u64) {
         let mut g = self.inner.lock().unwrap();
         g.total += n;
         let t = g.total;
@@ -154,22 +154,56 @@ impl Progress {
         }
     }
     pub fn total(&self) -> u64 { self.inner.lock().unwrap().total }
-    /// Byte/s se la misura è attendibile (almeno 1 s di campioni recenti).
-    pub fn speed(&self) -> Option<f64> {
-        let now = Instant::now();
+    /// (byte/s, secondi di campioni) se la misura è attendibile (almeno 1 s di campioni recenti).
+    fn measure(&self) -> Option<(f64, f64)> { self.measure_at(Instant::now()) }
+    fn measure_at(&self, now: Instant) -> Option<(f64, f64)> {
         let g = self.inner.lock().unwrap();
         let (t0, b0) = *g.samples.front()?;
         let (t1, b1) = *g.samples.back()?;
         if g.samples.len() < 2 || now.duration_since(t1) > Duration::from_secs(2) || t1.duration_since(t0) < Duration::from_secs(1) {
             return None;
         }
-        Some((b1.saturating_sub(b0)) as f64 / t1.duration_since(t0).as_secs_f64())
+        let span = t1.duration_since(t0).as_secs_f64();
+        Some(((b1.saturating_sub(b0)) as f64 / span, span))
+    }
+    /// Byte/s se la misura è attendibile (almeno 1 s di campioni recenti).
+    pub fn speed(&self) -> Option<f64> { self.measure().map(|m| m.0) }
+    /// Secondi rimanenti, solo se la velocità è stabile da almeno 3 s, non nulla, e la stima è sensata (< 24 h).
+    /// Altrimenti `None`: meglio non mostrare nulla che un numero inventato.
+    pub fn eta(&self, remaining: u64) -> Option<f64> { self.eta_at(Instant::now(), remaining) }
+    fn eta_at(&self, now: Instant, remaining: u64) -> Option<f64> {
+        let (v, span) = self.measure_at(now)?;
+        if span < 3.0 || v < 1.0 || remaining == 0 { return None; }
+        let eta = remaining as f64 / v;
+        (eta < 86_400.0).then_some(eta)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn speed_and_eta_only_when_reliable() {
+        let t0 = Instant::now();
+        let p = Progress::new();
+        assert_eq!((p.measure_at(t0), p.eta_at(t0, 1000)), (None, None), "nessun dato");
+        p.add_at(t0, 0);
+        p.add_at(t0 + Duration::from_millis(500), 500_000);
+        assert!(p.measure_at(t0 + Duration::from_millis(600)).is_none(), "meno di 1 s di campioni");
+        for i in 1..=4u64 { p.add_at(t0 + Duration::from_millis(500 + 500 * i), 500_000); }
+        let now = t0 + Duration::from_millis(2600);
+        let (v, span) = p.measure_at(now).unwrap();
+        assert!((v - 1_000_000.0).abs() < 1.0 && span >= 1.5, "{v} {span}");
+        assert!(p.eta_at(now, 10_000_000).is_none(), "meno di 3 s di storia: niente tempo residuo");
+        p.add_at(t0 + Duration::from_millis(3000), 500_000);
+        let now = t0 + Duration::from_millis(3100);
+        let eta = p.eta_at(now, 10_000_000).unwrap();
+        assert!((eta - 10.0).abs() < 0.5, "{eta}");
+        assert!(p.eta_at(now, 0).is_none(), "nulla da trasferire");
+        assert!(p.measure_at(now + Duration::from_secs(5)).is_none(), "campioni vecchi: il trasferimento è fermo");
+        assert!(p.eta_at(now, u64::MAX / 2).is_none(), "stima assurda (> 24 h)");
+    }
 
     #[test]
     fn traversal_and_separators() {

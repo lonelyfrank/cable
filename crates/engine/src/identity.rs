@@ -35,7 +35,7 @@ fn generate() -> Result<(String, String), String> {
     use rcgen::{date_time_ymd, CertificateParams, DistinguishedName, DnType, KeyPair};
     let mut params = CertificateParams::new(Vec::<String>::new()).map_err(|e| e.to_string())?;
     let mut dn = DistinguishedName::new();
-    dn.push(DnType::CommonName, "Pixel Hub");
+    dn.push(DnType::CommonName, "Cable");
     params.distinguished_name = dn;
     params.not_before = date_time_ymd(2025, 1, 1);
     params.not_after = date_time_ymd(2045, 1, 1);
@@ -198,7 +198,7 @@ mod tests {
         fs::create_dir_all(p.legacy_cache()).unwrap();
         let (c, k) = (p.legacy_cache().join("cert.pem"), p.legacy_cache().join("key.pem"));
         let gen = std::process::Command::new("openssl")
-            .args(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2", "-subj", "/CN=Pixel Hub", "-keyout"])
+            .args(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2", "-subj", "/CN=Cable", "-keyout"])
             .arg(&k).arg("-out").arg(&c).output();
         if !gen.map(|o| o.status.success()).unwrap_or(false) { eprintln!("openssl non disponibile: test saltato"); return; }
         let der = std::process::Command::new("openssl").args(["x509", "-outform", "DER", "-in"]).arg(&c).output().unwrap().stdout;

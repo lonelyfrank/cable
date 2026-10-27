@@ -212,7 +212,7 @@ async fn dropped_upload_future_cleans_temp_and_resets_state() {
         if state(&e)["byte"].as_u64().unwrap() > 0 { break; }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    assert!(listing(&e.inbox).iter().any(|n| n.starts_with(".pixelhub-")));
+    assert!(listing(&e.inbox).iter().any(|n| n.starts_with(".cable-")));
     h.abort();
     let _ = h.await;
     assert!(listing(&e.inbox).is_empty());

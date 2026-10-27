@@ -1,39 +1,54 @@
 # Esiti dei test (27 ottobre 2026 · Fedora 44 · rustc/cargo 1.98 · Tauri 2 · webkit2gtk 4.1)
 
-## 1. Test automatici eseguiti
+**Nessuna prova è stata fatta con smartphone reali né con le app LocalSend ufficiali (Android o iOS).** Tutto ciò che segue è
+automatico, su loopback, fra implementazioni interne (motore Rust ↔ motore Rust, e Rust ↔ peer Python scritto dallo stesso autore).
+Dimostra la coerenza del codice, **non** la compatibilità con i telefoni. Ciò che richiede hardware è in
+[CHECKLIST-MANUALE.md](CHECKLIST-MANUALE.md).
 
-### Motore Rust — `scripts/dev.sh test`: **51 test, tutti passati**, ripetuti 5 volte senza instabilità
-Senza grafica; i due motori dialogano su loopback con TLS reale. Durata ~18 s (la suite Python equivalente: ~31 s).
+Base di partenza (prima delle modifiche di Cable): 51 test del motore + 30 controlli della finestra, tutti verdi; nessuna regressione
+preesistente da distinguere. `clippy` non è installato: non eseguito.
 
-| Suite | Test | Cosa copre |
+## 1. Test automatici — `scripts/dev.sh test`: **80 test, tutti passati** (5 esecuzioni consecutive senza instabilità dopo la correzione di due test)
+
+| Suite | Test | Novità di Cable |
 |---|---|---|
-| unitari (`lib`) | 19 | nomi sicuri (`..`, separatori, controlli, Unicode, lunghezza), collegamenti simbolici, rinomina senza sovrascrittura, validazione metadati/dimensioni/sha256/anteprime/limiti, migrazione 3.x (conserva cartelle, declassa «fidati» a preferiti, scarta auto-accettazione, file 3.x intatto, idempotente, backup, PIN compatibile), lettura di un `settings.json` della 4.0 Python, file corrotto messo da parte, identità (creazione, permessi 0600, **import di una chiave RSA creata da Python**, nessuna rigenerazione automatica, rigenerazione esplicita con backup), percorsi consentiti e validazione dell'API UI |
-| `receiver` | 15 | sessioni/token/IP, upload duplicato (409) e concorrente (uno solo vince), dimensione/Content-Length errati, sha256 errato (422) e ritentativo, rete caduta a metà, **handler abbandonato a metà upload e a metà richiesta** (parziali ripuliti, stato coerente), annullamento dal mittente e locale (esito *parziale*, mai «completata»), scadenze, accettazione parziale, rifiuto, timeout, 409/429, PIN (401, limite, 429), spazio insufficiente (507), testo con conferma |
-| `e2e` | 17 | invio/ricezione di file, testo, cartelle; rifiuto; accettazione parziale; PIN (errato poi giusto, mai in chiaro); annullamento a metà di 600 MB da entrambi i lati; mittente che annulla mentre l'utente sta ancora decidendo; sorgente modificata/rimossa (prima e **durante** l'upload: interrotto a metà, nulla salvato); identità incoerente rifiutata; destinatario spento; client ostili (HTTP in chiaro, spazzatura, corpo da 9 MB → 413); nessuna auto-accettazione neppure con l'impronta di un preferito; 300 MB con memoria limitata (<60 MB); nomi duplicati; **wizard** (codice giusto/sbagliato/formato, 5 errori → blocco, il codice vale una sola volta, nulla salvato prima della conferma, prova inversa, invio del codice non visibile fra i trasferimenti); preferiti/dimentica/ripristino/rigenerazione/porta occupata e ripresa; identità corrotta; stato completo e senza segreti |
+| unitari (`lib`) | 42 | **migrazione** da Pixel Hub (copia, impronta identica, chiave 0600, originali intatti, nome personalizzato conservato, idempotenza, nessuna sovrascrittura, dati vecchi+nuovi, impostazioni corrotte); **registro** (più indirizzi e cambio IP, limite, nomi uguali con etichette distinte, cambio d'identità senza trasferire la fiducia, avviso ignorabile, le quattro proprietà indipendenti, presenza che decade dopo rete/sospensione, stella = scorciatoia, nessun annuncio non provato riscrive il record, tetto dei ricordati); **discovery** (interfacce virtuali/VPN, gateway per metrico, sottoreti); **ETA** solo se attendibile; **messaggi** d'errore (fatti + cause, niente colpa al firewall) |
+| `receiver` | 15 | invariati (sessioni, token, scadenze, annullamento, parziali, PIN, 507, TOCTOU…) |
+| `e2e` | 23 | **riprova** (solo i non completati, mai quelli riusciti, nessun doppione, non due volte, non da completato, file spariti); **interruzione** a metà con esito per file; **indirizzo vecchio** che non rallenta né rompe l'invio (< 2,5 s); **aggiorna**: «vicino» ≠ «raggiungibile», messaggio con indirizzo e senza «firewall»; **evento di ripresa** accorpato che fa decadere la presenza; più tutti i 17 precedenti (rifiuto, parziale, PIN, annullamento da entrambi i lati, sorgente modificata, identità incoerente, nessuna auto-accettazione, wizard, memoria limitata, identità corrotta mai rigenerata) |
 
-### Finestra reale (Tauri) — `scripts/dev.sh ui-test`: **30 controlli, tutti passati**
-Sessione Wayland, dati isolati, secondo motore in-process come telefono. Verificati: caricamento e stato spinto dal motore, **tutto il wizard** (apertura al
-primo avvio, controlli del passo 1, «Avanti» spento finché non scegli tu il telefono, codice sbagliato/giusto, conferma salvata, prova inversa con la richiesta
-sopra il wizard, applicazione di nome e PIN come solo hash, chiusura definitiva, riapertura da Impostazioni, «Salta per ora»), poi accettazione **parziale**
-dall'interfaccia, invio con richiesta PIN dalla UI, consegna alla pagina dell'evento di rilascio sul riquadro di un dispositivo (percorso reale, nessuna cache di
-uscita), diagnostica, zero errori JavaScript. Gli screenshot si generano in locale in `docs/screenshots-v5/` e **non sono versionati** (mostrano il nome dell'utente di sistema).
+Limiti dei test: l'esito `parziale`/`interrotto` dopo un annullamento del destinatario dipende da chi vince una corsa (risposta d'errore o chiusura
+del socket); i test accettano entrambi. I test con file enormi sono serializzati perché la memoria di picco è del processo.
 
-### Altro eseguito
-* **Interoperabilità Python ↔ Rust** (`scripts/dev.sh interop`): file da 5 MB con sha256 e testo in entrambe le direzioni; certificato ECDSA (Rust) contro RSA (Python). Sono due
-  implementazioni **indipendenti**, ma scritte da me con la stessa lettura della specifica: non sostituisce la prova con l'app ufficiale.
-* Istanza unica con inoltro dei file, riapertura da background (la finestra si crea e la seconda istanza esce in ~200 ms), guardia contro versioni Python in esecuzione,
-  lettura dell'identità Rust da parte di Python, `installa-utente.sh` (install/rimuovi con ripristino, in HOME isolata), `desktop-file-validate`.
-* Suite Python di riferimento (`scripts/dev.sh legacy-test`): 87 test passati.
-* Bug trovati dai test e corretti in questa fase: tag `</style>` dimenticato nel patch del CSS (pagina vuota), feature `custom-protocol` mancante
-  (Tauri in modalità sviluppo senza `devUrl`), finestra creata anche in background (memoria 164 MB invece di 28 MB).
+## 2. Altre prove eseguite
 
-## 2. Prove con client ufficiali — **NON eseguite**
-Nessuna prova con LocalSend ufficiale su Android o iOS: la compatibilità è **non dimostrata**. Vedi `CHECKLIST-MANUALE.md` (sezione W per il wizard).
+* **Finestra reale** (`scripts/dev.sh ui-test`, sessione Wayland, dati isolati, motore peer in-process): **30 controlli su 30**. Copre wizard,
+  accettazione parziale, PIN, rilascio sul dispositivo (consegna alla pagina dell'evento), diagnostica, zero errori JavaScript. **Non coperti**:
+  scelta del destinatario per file da riga di comando, «Riprova», avvisi d'identità, «Apri»/«Mostra» (funzioni aggiunte dopo: il motore è
+  provato, l'interfaccia solo per assenza di errori JS e a vista su uno screenshot di *Condividi*).
+* **Interoperabilità Python ↔ Rust** (`scripts/dev.sh interop`): file con sha256 e testo in entrambe le direzioni, ECDSA contro RSA: OK.
+* **Migrazione sui dati reali dell'utente, in copia** (HOME isolata, poi cancellata): impronta del certificato identica prima/dopo, preferiti
+  e conferme uguali, nome predefinito sostituito, originali byte per byte uguali, seconda esecuzione senza effetti, chiave 0600.
+* **Installer** in HOME isolata: installa, salva il lanciatore di Pixel Hub, `desktop-file-validate` OK, `rimuovi` ripristina. **Non** eseguito
+  sul sistema reale (Pixel Hub era in esecuzione: non l'ho chiuso io).
+* **Eventi D-Bus**: l'esempio `netwatch_probe` si collega al bus di sistema e riceve segnali **sintetici** (emessi con `busctl`: un segnale sotto
+  `/org/freedesktop/NetworkManager` → *Network*, `PrepareForSleep(false)` → *Resume*). Eventi **reali** di NetworkManager/logind non provati
+  (non ho spento la rete della macchina su cui lavoro).
 
-## 3. Verifiche ancora da fare
-* Telefoni reali, multicast su Wi-Fi/hotspot, firewalld, VPN; che LocalSend ufficiale accetti il certificato ECDSA e mostri il messaggio col codice del wizard (se chieda *Accetta*).
-* Drag-and-drop **reale** da Nautilus (provata solo la consegna alla pagina), selettori file/cartella nativi, aspetto e azioni delle notifiche in GNOME Shell,
-  associazione icona/finestra (`StartupWMClass=pixel-hub`), avvio automatico al login.
-* ADB e scrcpy con un telefono reale (codice portato, non eseguito contro un dispositivo).
-* Costruzione dell'RPM (`rpmbuild` assente), Fedora Atomic.
-* Non misurati: velocità di trasferimento, latenza di riapertura della finestra.
+## 3. Misure (loopback, stessa macchina — `cargo run --release -p pixelhub-engine --example bench`)
+
+Intel i7-10510U, Fedora 44, due motori nello stesso processo, TLS reale, disco locale. **Non sono prestazioni su Wi-Fi né su telefono.**
+
+| Misura | Valore |
+|---|---|
+| Latenza di avvio (invio → richiesta visibile sul destinatario), 1 file piccolo | mediana 3,1 ms (min 2,6 · max 4,0), 5 prove |
+| File grande 1 GiB | 1,19 s ≈ 859 MiB/s |
+| 2000 file da 4 KiB | preparazione 0,22 s, totale 7,3 s ≈ 274 file/s (una richiesta per file: i file piccoli sono il caso lento) |
+| Memoria (due motori + 1 GiB trasferito) | RSS 7 MiB a riposo, **picco 28 MiB** → lo streaming non copia i file in memoria |
+| App in background (binario `--background`, senza multicast, 20 s) | CPU 0,0 %, RSS 65 MiB, 18 thread (RSS include le librerie condivise: non confrontabile con le misure PSS di Pixel Hub) |
+
+**Non misurati** (richiedono rete/telefoni o un ambiente non disruptivo): tempo di scoperta reale (multicast su Wi-Fi), latenza su Wi-Fi,
+recupero dopo cambio rete o sospensione veri, memoria con finestra aperta, riapertura della finestra.
+
+## 4. Prove con client ufficiali — **NON eseguite**
+Compatibilità con LocalSend ufficiale su Android e iOS **non dimostrata**: certificato ECDSA accettato?, messaggio col codice del wizard mostrato?,
+comportamento a PIN ripetuti e con `sha256`, multicast su hotspot. Vedi la checklist.

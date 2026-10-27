@@ -1,4 +1,37 @@
-# Architettura, analisi e decisioni (Pixel Hub 5.0)
+# Architettura, analisi e decisioni (Cable 6.0, già Pixel Hub 5.0)
+
+## 0. Cable 6.0: cosa è cambiato rispetto a Pixel Hub 5.0
+
+Analisi di partenza (stato reale al momento del lavoro): motore e GUI già separati, 51 test verdi, ma il progetto si presentava come
+«Pixel Hub»/«Fedora» (nome, notifiche, lanciatore, testi della UI, nome predefinito, cartelle `Pixel`), il registro teneva **un solo
+indirizzo per dispositivo** (l'ultimo annuncio, non provato, vinceva), la presenza non decadeva dopo cambio rete/sospensione,
+`deviceType` mancante diventava «mobile», il gateway per l'hotspot era «il primo» di `/proc/net/route` (anche una VPN) e un annuncio
+con certificato incoerente **rimuoveva l'intero dispositivo** (cancellabile da chiunque in rete). Nessuna restrizione a un solo
+telefono/marchio nel codice di Rust (la 3.1 Bash sì, già superata); la scheda «Pixel» della UI era però un'assunzione di prodotto.
+
+| Area | Modifica | Dove |
+|---|---|---|
+| Identità del prodotto | nome Cable ovunque; binario `cable`, ID `it.frank.Cable`, cartelle `cable`, icona nuova (PNG hicolor 16–512) | `paths`, `desktop`, `src-tauri`, `data/`, `packaging/`, UI |
+| Migrazione | copia idempotente e non distruttiva di impostazioni + identità + avvio automatico; registro in `migrazione-pixel-hub.json` | `migrate.rs`, `desktop::migra_avvio_automatico` |
+| Indipendenza dal marchio | modello/tipo sconosciuti restano vuoti; niente prefissi «Pixel/Android» nelle iniziali; schede ADB/scrcpy visibili solo se i programmi esistono | `protocol`, UI |
+| Registro | più indirizzi per impronta (max 4) con *visto* e *confermato* separati; nessun annuncio non provato cambia il record salvato; etichette distinte per nomi uguali; avviso di cambio d'identità | `devices.rs` |
+| Quattro proprietà | `ricordato`, `vicino`, `raggiungibile`, `confermato` indipendenti nello snapshot; la stella è solo `preferito` | `devices.rs`, `settings.rs` |
+| Discovery | filtro interfacce virtuali (docker, virbr, veth…); gateway ordinati per metrico senza VPN; `refresh` parallelo con probe TLS (2 s); presenza che decade; salto d'orologio = ripresa; D-Bus NetworkManager/logind come acceleratore (raffiche accorpate, 1,5 s) | `discovery.rs`, `netwatch.rs` |
+| Invio | indirizzi provati **in parallelo** (3 s, una configurazione TLS per tentativo) prima di calcolare gli hash; stati `scaduto` e `interrotto`; esito per file con byte inviati; ETA solo se attendibile; `riprova` | `sender.rs`, `client.rs`, `util.rs` |
+| Messaggi | fatti osservati + cause possibili; nessun timeout attribuito al firewall | `client.rs` |
+| UI | scelta del destinatario per file portati da fuori (CLI, file manager, rilascio sulla finestra); «Apri» e «Mostra nella cartella»; «Riprova»; avvisi di identità | `ui/` |
+
+### Decisioni e identificatori storici
+
+* **Nomi tecnici cambiati** (visibili all'utente/sistema, migrazione fornita): binario, ID applicazione, cartelle, avvio automatico, lanciatore.
+* **Nomi tecnici mantenuti** (rischio senza beneficio): chiave `preferiti` in `settings.json` (ora *ricordati*; il campo `preferito` distingue
+  la stella; i record vecchi senza campo valgono come stellati), crate `pixelhub-engine`, nomi italiani di stati/campi, `legacy/`, `reference/`,
+  schema 4 delle impostazioni (compatibile all'indietro).
+* **zbus** è già nell'albero (lo usa `notify-rust`): dichiararlo nel motore non compila crate in più. Serve per gli eventi D-Bus senza processi
+  esterni né polling. Nessun'altra dipendenza nuova.
+* **Un invio verso un indirizzo qualsiasi è sempre verificato dall'impronta**: perciò provare più indirizzi in parallelo è sicuro, ma ogni tentativo
+  ha una configurazione TLS propria (una condivisa permetterebbe a una connessione di leggere l'impronta vista da un'altra).
+* **Fiducia** (limiti espliciti): vedi §4. Il nome non è mai usato per decidere nulla, solo per *avvisare* (cambio d'identità) e per etichettare.
 
 ## 1. Analisi della base 3.1 (installer `reference/installa-pixel-hub-fedora.sh`)
 
@@ -66,8 +99,10 @@ packaging/ data/ scripts/ docs/ tests/interop/ reference/
 * **Identità:** i nuovi certificati sono **ECDSA P-256** (ring non genera RSA); le chiavi RSA create dalle versioni Python vengono lette e usate
   (testato, e la 4.0 Python legge a sua volta quelle ECDSA). Non provato che ogni client ufficiale accetti un certificato ECDSA.
 * **Notifiche** con `notify-rust` (D-Bus), perché il plugin Tauri non offre pulsanti d'azione su Linux. Avvio automatico gestito in proprio.
-* **Rete:** al cambio delle interfacce (controllo ogni 5 s sulla lista degli indirizzi) si riannuncia e si riaggancia il multicast. Il segnale di
-  sospensione/ripresa di logind **non** è agganciato (la ripresa viene colta dal cambio di interfacce e dal ritrasmettere periodico).
+* **Rete:** eventi D-Bus (NetworkManager, logind `PrepareForSleep`) quando disponibili; sempre attivi come ripiego il controllo ogni 5 s delle
+  interfacce e il confronto fra orologio di sistema e monotonico (rileva la sospensione anche senza logind). Dopo l'evento: la presenza dei
+  dispositivi non locali decade, si riaggancia il multicast, si riannuncia e si riverificano i noti. Gli eventi D-Bus reali di NetworkManager/logind
+  **non** sono stati provati (solo segnali sintetici sul bus di sistema, vedi TEST).
 
 ## 4. Identità e fiducia
 * In invio: impronta del certificato visto == impronta annunciata, altrimenti errore. «Verificato» (UI) = *visto in questa sessione un certificato con questa impronta*.
@@ -76,9 +111,9 @@ packaging/ data/ scripts/ docs/ tests/interop/ reference/
 * Cambio d'identità del PC: solo su richiesta esplicita («Rigenera identità»), con backup dei vecchi file.
 
 ## 5. Migrazione (idempotente, non distruttiva)
-Stesso `settings.json` (schema 4) della 4.0 Python. Dalla 3.x: copia di sicurezza in `~/.config/pixel-hub/backups/`, il file 3.x non viene mai modificato;
+Stesso `settings.json` (schema 4) della 4.0 Python. Dalla 3.x: copia di sicurezza in `~/.config/pixel-hub/backups/` (Pixel Hub 5.0; in Cable: `~/.config/cable/backups/`), il file 3.x non viene mai modificato;
 cartelle, nome, tema, PIN (stesso hash) conservati; i «fidati» e il telefono associato diventano **preferiti non confermati**; l'auto-accettazione è scartata;
-`wizard_fatto` è vero se c'era un telefono associato. Certificato/chiave 3.x **copiati** (non spostati) in `~/.local/share/pixel-hub/identity/`.
+`wizard_fatto` è vero se c'era un telefono associato. Certificato/chiave 3.x **copiati** (non spostati) in `~/.local/share/cable/identity/`.
 L'avvio automatico che puntava a script Python viene riscritto dopo averne salvato una copia. Se è in esecuzione una versione Python la 5.0 rifiuta di partire (codice 3).
 
 ## 6. Misure (stessa macchina, dati isolati, 8 s a riposo; PSS dell'intero albero di processi)
@@ -99,5 +134,5 @@ Conclusione onesta: il guadagno è netto su avvio e su memoria in background; **
 * Sorgente modificata durante l'invio: controllo a ogni MiB e interruzione (il destinatario scarta il parziale); se la modifica cade nell'ultimo blocco
   il destinatario può aver già salvato una copia incoerente e il mittente lo segnala.
 * Funzioni Android (ADB/scrcpy): portate dalla versione Python, non provate con un telefono reale; usano l'unico dispositivo ADB collegato.
-* Nautilus (menu contestuale) non implementato; si possono già passare file come argomenti.
+* Nautilus: nessuna estensione; lo script *Scripts › Invia con Cable* e `cable FILE...` (non provati in Nautilus reale).
 * Fedora Atomic, Flatpak non verificati. Il `.rpm` non è stato costruito (`rpmbuild` assente).

@@ -3,7 +3,7 @@ name = "pixelhub-engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Motore LocalSend v2 di Pixel Hub (nessuna dipendenza da GUI)"
+description = "Motore LocalSend v2 di Cable (nessuna dipendenza da GUI)"
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "fs", "io-util", "process", "signal"] }
@@ -31,6 +31,8 @@ fs4 = "0.13"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 dirs = "6"
 percent-encoding = "2"
+# già presente nell'albero (usata da notify-rust): nessun crate in più da compilare
+zbus = "5"
 
 [dev-dependencies]
 tempfile = "3"

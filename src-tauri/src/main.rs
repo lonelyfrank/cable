@@ -1,4 +1,4 @@
-// Pixel Hub 5: guscio Tauri attorno al motore Rust. L'interfaccia è l'HTML/CSS/JS della 3.x.
+// Cable: guscio Tauri attorno al motore Rust (finestra, notifiche, trascinamento, istanza unica).
 use pixelhub_engine::engine::VERSION;
 use pixelhub_engine::paths::Paths;
 use pixelhub_engine::ui_api::{self, Host};
@@ -49,7 +49,7 @@ fn mostra(app: &AppHandle) {
     let w = match app.get_webview_window("main") {
         Some(w) => w,
         None => match WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-            .title("Pixel Hub").inner_size(1120.0, 780.0).min_inner_size(400.0, 560.0).build() {
+            .title("Cable").inner_size(1120.0, 780.0).min_inner_size(400.0, 560.0).build() {
             Ok(w) => w,
             Err(e) => { eprintln!("impossibile creare la finestra: {e}"); return; }
         },
@@ -87,7 +87,7 @@ fn notifica(app: &AppHandle, engine: &Arc<Engine>, kind: &str, d: Value) {
     use notify_rust::{Notification, Timeout, Urgency};
     let s = |k: &str| d[k].as_str().unwrap_or("").to_string();
     let mut n = Notification::new();
-    n.appname("Pixel Hub").icon("it.frank.PixelHub").hint(notify_rust::Hint::DesktopEntry("it.frank.PixelHub".into()));
+    n.appname("Cable").icon("it.frank.Cable").hint(notify_rust::Hint::DesktopEntry("it.frank.Cable".into()));
     match kind {
         "richiesta" => {
             let tot = d["size"].as_u64().unwrap_or(0);
@@ -98,24 +98,30 @@ fn notifica(app: &AppHandle, engine: &Arc<Engine>, kind: &str, d: Value) {
                 .urgency(Urgency::Critical).timeout(Timeout::Milliseconds(120_000));
         }
         "fine" => match d["stato"].as_str().unwrap_or("") {
-            "completata" => { n.summary(&format!("Ricevuto da {}", s("alias"))).body(&format!("{} file", d["ricevuti"])).action("cartella", "Apri cartella").action("default", "Apri");  }
-            "parziale" | "errore" | "scaduta" => { n.summary(&format!("Ricezione da {} non completata", s("alias"))).body(&s("errore")).action("cartella", "Apri cartella").action("default", "Apri");  }
+            "completata" => {
+                n.summary(&format!("Ricevuto da {}", s("alias"))).body(&format!("{} file", d["ricevuti"])).action("mostra", "Mostra nella cartella");
+                // con un solo file «Apri» apre il file; altrimenti la cartella (vedi il gestore sotto)
+                if d["ricevuti"].as_u64() == Some(1) && !s("percorso").is_empty() { n.action("apri", "Apri"); }
+            }
+            "parziale" | "errore" | "scaduta" => { n.summary(&format!("Ricezione da {} non completata", s("alias"))).body(&s("errore")).action("cartella", "Apri cartella").action("default", "Apri Cable");  }
             _ => return,
         },
         "messaggio" => { n.summary(&format!("Messaggio da {}", s("alias"))).body(&s("testo").chars().take(120).collect::<String>()).action("default", "Apri");  }
         "invio" => {
-            let titolo = match d["stato"].as_str().unwrap_or("") { "completato" => "Invio completato", "parziale" => "Invio parziale", "rifiutato" => "Invio rifiutato", "errore" => "Invio non riuscito", _ => return };
+            let titolo = match d["stato"].as_str().unwrap_or("") { "completato" => "Invio completato", "parziale" => "Invio parziale", "rifiutato" => "Invio rifiutato", "scaduto" => "Invio scaduto", "interrotto" => "Invio interrotto", "errore" => "Invio non riuscito", _ => return };
             n.summary(titolo).body(&format!("{}{}", s("alias"), if s("errore").is_empty() { String::new() } else { format!(": {}", s("errore")) })).action("default", "Apri");
         }
         _ => return,
     }
-    let (app, engine, id) = (app.clone(), engine.clone(), s("id"));
+    let (app, engine, id, percorso) = (app.clone(), engine.clone(), s("id"), s("percorso"));
     std::thread::spawn(move || {
         let Ok(h) = n.show() else { return };
         h.wait_for_action(|a| match a {
             "accetta" => { engine.decidi(&id, None); }
             "rifiuta" => { engine.decidi(&id, Some(vec![])); }
             "cartella" => { let _ = desktop::apri(std::path::Path::new(&engine.sh.settings.str("cartella"))); }
+            "apri" => { let _ = desktop::apri(std::path::Path::new(&percorso)); }
+            "mostra" => { let p = std::path::Path::new(&percorso); if percorso.is_empty() { let _ = desktop::apri(std::path::Path::new(&engine.sh.settings.str("cartella"))); } else { let _ = desktop::mostra(p); } }
             "default" => mostra(&app),
             _ => {}
         });
@@ -132,13 +138,16 @@ fn cli() -> Option<i32> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--versione" || a == "--version") { println!("{VERSION}"); return Some(0); }
     if args.iter().any(|a| a == "--help" || a == "--aiuto") {
-        println!("Pixel Hub {VERSION}\n\n  pixel-hub [FILE...]       apre l'app (e prepara i file indicati per l'invio)\n  pixel-hub --background    parte nascosta, pronta a ricevere\n  pixel-hub --migra         importa le impostazioni della versione 3.x/4.x e mostra l'esito\n  pixel-hub --diagnostica   stampa la diagnostica di rete, senza aprire la finestra\n  pixel-hub --versione");
+        println!("Cable {VERSION}\n\n  cable [FILE...]        apre Cable e fa scegliere il destinatario per i file indicati\n  cable --background     parte nascosta, pronta a ricevere\n  cable --migra          importa i dati di Pixel Hub (impostazioni, dispositivi, identità) e mostra l'esito\n  cable --diagnostica    stampa la diagnostica di rete, senza aprire la finestra\n  cable --versione");
         return Some(0);
     }
     if args.iter().any(|a| a == "--migra") {
-        let s = pixelhub_engine::settings::Settings::load(&Paths::system());
+        let paths = Paths::system();
+        let rep = pixelhub_engine::migrate::run(&paths);
+        let s = pixelhub_engine::settings::Settings::load(&paths);
+        for a in &rep.avvisi { println!("{a}"); }
         let av = s.avvisi.lock().unwrap().clone();
-        println!("{}", if av.is_empty() { "Nessuna migrazione necessaria: impostazioni già nel formato corrente.".to_string() } else { av.join("\n") });
+        if av.is_empty() && rep.avvisi.is_empty() { println!("Nessuna migrazione necessaria: i dati sono già nel formato di Cable."); } else { println!("{}", av.join("\n")); }
         println!("Migrazione registrata: {}", s.get("migrato_da"));
         return Some(0);
     }
@@ -147,6 +156,12 @@ fn cli() -> Option<i32> {
         let _g = rt.enter();
         println!("{}", Engine::new(Paths::system(), 53317, false).diagnostica());
         return Some(0);
+    }
+    let pixel = if std::env::var_os("HUB_LS_PORT").is_some() { vec![] } else { desktop::processi_pixel_hub() };   // con una porta propria (prove, sandbox) non c'è conflitto
+    if !pixel.is_empty() {
+        eprintln!("Pixel Hub è ancora in esecuzione (PID {}) e usa la stessa porta di Cable. Chiudilo (Impostazioni › Esci) e riprova.",
+                  pixel.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "));
+        return Some(3);
     }
     let vecchi = desktop::processi_python();
     if !vecchi.is_empty() {
@@ -222,7 +237,7 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("errore nell'avvio di Pixel Hub")
+        .expect("errore nell'avvio di Cable")
         .run(|app, ev| match ev {
             tauri::RunEvent::ExitRequested { api, code, .. } => {
                 // code == None: è stata chiusa l'ultima finestra (non un'uscita esplicita)

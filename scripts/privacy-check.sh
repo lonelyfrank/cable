@@ -17,7 +17,7 @@ fi
 
 U=$(id -un); NAME=$(getent passwd "$U" | cut -d: -f5 | cut -d, -f1)
 GE=$(git config user.email || true)
-APPID="it\\.${U}\\.PixelHub"                       # l'identificatore dell'app contiene lo username: ammesso
+APPID="it\\.${U}\\.(PixelHub|Cable)"                       # l'identificatore dell'app contiene lo username: ammesso
 
 fail=0
 bad() { echo "PRIVACY: $*" >&2; fail=1; }

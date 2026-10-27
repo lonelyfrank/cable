@@ -1,7 +1,7 @@
 //! Impostazioni persistenti. Stesso file e stesso schema (4) della versione Python 4.0,
 //! più la migrazione dalla 3.x. Il file 3.x non viene mai modificato.
 use crate::paths::Paths;
-use crate::util::{clean_label, ct_eq, random_hex};
+use crate::util::{clean_label, ct_eq, now_secs, random_hex};
 use pbkdf2::pbkdf2_hmac;
 use serde_json::{json, Map, Value};
 use sha2::Sha256;
@@ -13,6 +13,24 @@ use std::sync::Mutex;
 
 pub const SCHEMA: u64 = 4;
 pub const PIN_ITERATIONS: u32 = 200_000;
+/// Dispositivi ricordati senza stella né conferma: oltre questo numero si scarta il meno recente
+pub const MAX_RICORDATI: usize = 24;
+/// Nome predefinito di Pixel Hub 5.0: la migrazione lo sostituisce solo se non è mai stato cambiato.
+pub const OLD_DEFAULT_NAME: &str = "Fedora Pixel Hub";
+
+/// Nome predefinito di questo PC come lo vedono gli altri dispositivi: «Cable» più il nome host,
+/// così due PC con Cable sulla stessa rete non si presentano con lo stesso nome.
+pub fn default_name() -> String {
+    let mut buf = [0u8; 256];
+    let host = unsafe {
+        if libc::gethostname(buf.as_mut_ptr().cast(), buf.len() - 1) == 0 {
+            let end = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
+            String::from_utf8_lossy(&buf[..end]).split('.').next().unwrap_or("").to_string()
+        } else { String::new() }
+    };
+    let host = clean_label(&host, 28, "");
+    if host.is_empty() || host == "localhost" { "Cable".into() } else { format!("Cable {host}") }
+}
 
 pub fn is_fp(s: &str) -> bool { s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()) }
 
@@ -48,6 +66,9 @@ fn clean_favorites(v: &Value) -> Value {
                 "ip": r.get("ip").and_then(Value::as_str).unwrap_or("").chars().take(45).collect::<String>(),
                 "port": port,
                 "confermato": r.get("confermato").and_then(Value::as_bool).unwrap_or(false),
+                // i record di Pixel Hub non hanno il campo: erano tutti preferiti
+                "preferito": r.get("preferito").and_then(Value::as_bool).unwrap_or(true),
+                "visto": r.get("visto").and_then(Value::as_f64).filter(|v| *v >= 0.0).unwrap_or(0.0),
             }));
         }
     }
@@ -57,7 +78,7 @@ fn clean_favorites(v: &Value) -> Value {
 /// (valido, valore normalizzato)
 pub fn validate(key: &str, v: &Value) -> Option<Value> {
     match key {
-        "nome_pc" => v.as_str().filter(|s| !s.trim().is_empty()).map(|s| json!(clean_label(s, 40, "Fedora Pixel Hub"))),
+        "nome_pc" => v.as_str().filter(|s| !s.trim().is_empty()).map(|s| json!(clean_label(s, 40, &default_name()))),
         "cartella" | "cartella_foto" => v.as_str().filter(|s| s.starts_with('/')).map(|s| json!(s)),
         "vetro" => v.as_f64().map(|n| json!((n as i64).clamp(0, 100))),
         "tema" => v.as_str().filter(|s| ["auto", "chiaro", "scuro"].contains(s)).map(|s| json!(s)),
@@ -70,9 +91,9 @@ pub fn validate(key: &str, v: &Value) -> Option<Value> {
 
 pub fn defaults(p: &Paths) -> Map<String, Value> {
     let Value::Object(m) = json!({
-        "schema": SCHEMA, "nome_pc": "Fedora Pixel Hub",
-        "cartella": p.downloads.join("Pixel Hub").to_string_lossy(),
-        "cartella_foto": p.pictures.join("Pixel").to_string_lossy(),
+        "schema": SCHEMA, "nome_pc": default_name(),
+        "cartella": p.downloads.join("Cable").to_string_lossy(),
+        "cartella_foto": p.pictures.join("Cable").to_string_lossy(),
         "vetro": 45, "tema": "auto", "notifiche": true, "schermo_intero": false, "background": true,
         "avvio_login": false, "preferiti": {}, "pin_ricezione": null, "migrato_da": null, "wizard_fatto": false,
     }) else { unreachable!() };
@@ -125,14 +146,14 @@ pub fn migrate_v3(legacy: &Path, p: &Paths) -> Result<Map<String, Value>, String
     let mut cand: Map<String, Value> = old["fidati"].as_object().cloned().unwrap_or_default();
     let pairing = old["pairing"].as_object().cloned().unwrap_or_default();
     if let Some(fp) = pairing.get("fp").and_then(Value::as_str) {
-        cand.entry(fp.to_string()).or_insert_with(|| json!(pairing.get("alias").and_then(Value::as_str).unwrap_or("Pixel")));
+        cand.entry(fp.to_string()).or_insert_with(|| json!(pairing.get("alias").and_then(Value::as_str).unwrap_or("Dispositivo")));
     }
     let mut fav = Map::new();
     for (fp, alias) in cand {
         let fp = fp.to_uppercase();
         if is_fp(&fp) {
             fav.insert(fp, json!({"alias": alias.as_str().unwrap_or("Dispositivo").chars().take(60).collect::<String>(),
-                                   "ip": "", "port": 53317, "confermato": false}));
+                                   "ip": "", "port": 53317, "confermato": false, "preferito": true, "visto": 0.0}));
         }
     }
     let n = fav.len();
@@ -233,6 +254,8 @@ impl Settings {
         true
     }
 
+    /// «Preferito» è solo una stella: mette il dispositivo in cima all'elenco. Non concede nulla (ogni ricezione
+    /// chiede comunque conferma). Togliendola il dispositivo resta ricordato; per toglierlo davvero c'è `dimentica`.
     pub fn preferito(&self, fp: &str, on: bool, info: Option<(&str, &str, u16)>) -> bool {
         let fp = fp.to_uppercase();
         if !is_fp(&fp) { return false; }
@@ -240,16 +263,77 @@ impl Settings {
             let mut d = self.d.lock().unwrap();
             let fav = d.entry("preferiti").or_insert_with(|| json!({}));
             let fav = fav.as_object_mut().unwrap();
-            if on {
-                let prev = fav.get(&fp).cloned().unwrap_or(json!({}));
-                let (alias, ip, port) = info.map(|(a, i, p)| (a.to_string(), i.to_string(), p)).unwrap_or_else(|| (
-                    prev["alias"].as_str().unwrap_or("Dispositivo").to_string(),
-                    prev["ip"].as_str().unwrap_or("").to_string(), prev["port"].as_u64().unwrap_or(53317) as u16));
-                fav.insert(fp, json!({"alias": alias.chars().take(60).collect::<String>(), "ip": ip, "port": port,
-                                       "confermato": prev["confermato"].as_bool().unwrap_or(false)}));
-            } else {
-                fav.remove(&fp);
-            }
+            let prev = fav.get(&fp).cloned();
+            if prev.is_none() && !on { return true; }
+            let prev = prev.unwrap_or(json!({}));
+            let (alias, ip, port) = info.map(|(a, i, p)| (a.to_string(), i.to_string(), p)).unwrap_or_else(|| (
+                prev["alias"].as_str().unwrap_or("Dispositivo").to_string(),
+                prev["ip"].as_str().unwrap_or("").to_string(), prev["port"].as_u64().unwrap_or(53317) as u16));
+            fav.insert(fp, json!({"alias": alias.chars().take(60).collect::<String>(), "ip": ip, "port": port,
+                                   "confermato": prev["confermato"].as_bool().unwrap_or(false), "preferito": on,
+                                   "visto": prev["visto"].as_f64().unwrap_or_else(now_secs)}));
+        }
+        let _ = self.save();
+        true
+    }
+
+    /// Toglie del tutto il dispositivo dai ricordati (con stella e conferma): azione esplicita dell'utente.
+    pub fn dimentica(&self, fp: &str) {
+        let fp = fp.to_uppercase();
+        let removed = {
+            let mut d = self.d.lock().unwrap();
+            d.get_mut("preferiti").and_then(Value::as_object_mut).map_or(false, |f| f.remove(&fp).is_some())
+        };
+        if removed { let _ = self.save(); }
+    }
+
+    /// Ricorda un dispositivo con cui si è appena parlato (connessione con impronta verificata), senza stella.
+    /// Se è già ricordato aggiorna nome e indirizzo, ma non tocca `preferito` né `confermato`.
+    /// Restituisce true se qualcosa è cambiato su disco.
+    pub fn ricorda(&self, fp: &str, alias: &str, ip: &str, port: u16) -> bool {
+        let fp = fp.to_uppercase();
+        if !is_fp(&fp) { return false; }
+        let now = now_secs();
+        let changed = {
+            let mut d = self.d.lock().unwrap();
+            let fav = d.entry("preferiti").or_insert_with(|| json!({})).as_object_mut().unwrap();
+            let alias: String = alias.chars().take(60).collect();
+            let rec = match fav.get(&fp) {
+                Some(prev) => {
+                    let unchanged = prev["alias"] == json!(alias) && prev["ip"] == json!(ip) && prev["port"] == json!(port)
+                        && now - prev["visto"].as_f64().unwrap_or(0.0) < 3600.0;
+                    if unchanged { return false; }
+                    json!({"alias": alias, "ip": ip, "port": port, "confermato": prev["confermato"], "preferito": prev["preferito"], "visto": now})
+                }
+                None => {
+                    // massimo MAX_RICORDATI senza stella né conferma: si scarta il meno recente
+                    let mut loose: Vec<(String, f64)> = fav.iter().filter(|(_, r)| r["preferito"] != json!(true) && r["confermato"] != json!(true))
+                        .map(|(k, r)| (k.clone(), r["visto"].as_f64().unwrap_or(0.0))).collect();
+                    if loose.len() >= MAX_RICORDATI {
+                        loose.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+                        if let Some((k, _)) = loose.first() { fav.remove(k); }
+                    }
+                    json!({"alias": alias, "ip": ip, "port": port, "confermato": false, "preferito": false, "visto": now})
+                }
+            };
+            fav.insert(fp, rec);
+            true
+        };
+        if changed { let _ = self.save(); }
+        changed
+    }
+
+    /// Azione esplicita dell'utente dopo un cambio d'identità: il nuovo dispositivo prende il posto del vecchio
+    /// nell'elenco, ma **non eredita la conferma**. Il vecchio record viene rimosso.
+    pub fn sostituisci_ricordato(&self, old_fp: &str, new_fp: &str, alias: &str, ip: &str, port: u16) -> bool {
+        let (old_fp, new_fp) = (old_fp.to_uppercase(), new_fp.to_uppercase());
+        if !is_fp(&old_fp) || !is_fp(&new_fp) || old_fp == new_fp { return false; }
+        {
+            let mut d = self.d.lock().unwrap();
+            let fav = d.entry("preferiti").or_insert_with(|| json!({})).as_object_mut().unwrap();
+            let Some(prev) = fav.remove(&old_fp) else { return false };
+            fav.insert(new_fp, json!({"alias": alias.chars().take(60).collect::<String>(), "ip": ip, "port": port,
+                "confermato": false, "preferito": prev["preferito"].as_bool().unwrap_or(false), "visto": now_secs()}));
         }
         let _ = self.save();
         true
@@ -262,7 +346,9 @@ impl Settings {
         {
             let mut d = self.d.lock().unwrap();
             let fav = d.entry("preferiti").or_insert_with(|| json!({})).as_object_mut().unwrap();
-            fav.insert(fp, json!({"alias": alias.chars().take(60).collect::<String>(), "ip": ip, "port": port, "confermato": true}));
+            let prev = fav.get(&fp).cloned().unwrap_or(json!({}));
+            fav.insert(fp, json!({"alias": alias.chars().take(60).collect::<String>(), "ip": ip, "port": port, "confermato": true,
+                                   "preferito": prev["preferito"].as_bool().unwrap_or(true), "visto": now_secs()}));
         }
         let _ = self.save();
     }
@@ -348,7 +434,7 @@ mod tests {
         fs::write(p.settings_file(), "{non json").unwrap();
         let s = Settings::load(&p);
         assert!(!s.avvisi.lock().unwrap().is_empty());
-        assert_eq!(s.str("nome_pc"), "Fedora Pixel Hub");
+        assert_eq!(s.str("nome_pc"), default_name());
         assert!(fs::read_dir(&p.config).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().contains("corrotto")));
     }
 
@@ -370,6 +456,6 @@ mod tests {
         let bk = s.ripristina().unwrap();
         assert!(fs::read_to_string(bk).unwrap().contains("PC"));
         assert!(s.preferiti().is_empty());
-        assert_eq!(s.str("nome_pc"), "Fedora Pixel Hub");
+        assert_eq!(s.str("nome_pc"), default_name());
     }
 }

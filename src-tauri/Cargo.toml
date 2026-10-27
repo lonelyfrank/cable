@@ -1,9 +1,9 @@
 [package]
-name = "pixel-hub"
+name = "cable"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Pixel Hub: trasferimento rapido di file e testi via LocalSend"
+description = "Cable: file e testi fra Linux e smartphone Android/iOS via LocalSend"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

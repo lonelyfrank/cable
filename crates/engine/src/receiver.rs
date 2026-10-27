@@ -321,7 +321,7 @@ impl Receiver {
                       progress: &Progress, mut body: S) -> Result<PathBuf, WriteErr>
     where S: Stream<Item = Result<Bytes, StreamError>> + Unpin {
         let fin = prepare_target(root, parts).map_err(WriteErr::from)?;
-        let tmp = fin.parent().unwrap().join(format!(".pixelhub-{}.part", random_hex(8)));
+        let tmp = fin.parent().unwrap().join(format!(".cable-{}.part", random_hex(8)));
         let file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).custom_flags(libc::O_NOFOLLOW)
             .open(&tmp).map_err(WriteErr::Io)?;
         self.set_tmp(rid, fid, Some(tmp.clone()));
@@ -403,7 +403,9 @@ impl Receiver {
                 }
                 sid = inc.sid.clone();
                 notice = (inc.kind == "file").then(|| json!({"id": inc.id, "alias": inc.alias, "stato": state.as_str(),
-                                                              "ricevuti": done, "totale": inc.selected.len(), "errore": error}));
+                                                              "ricevuti": done, "totale": inc.selected.len(), "errore": error,
+                                                              // il primo file consegnato: serve a «Apri» e «Mostra nella cartella»
+                                                              "percorso": inc.files.iter().find(|f| f.state == FState::Fatto && !f.path.is_empty()).map(|f| f.path.clone()).unwrap_or_default()}));
             }
             st.by_sid.remove(&sid);
         }
@@ -435,13 +437,13 @@ impl Receiver {
         self.bus.emit("ricezioni");
     }
 
-    /// All'avvio elimina i soli temporanei di Pixel Hub, vecchi, in cima alla cartella.
+    /// All'avvio elimina i soli temporanei di Cable (e delle versioni precedenti), vecchi, in cima alla cartella.
     pub fn pulisci_residui(&self) {
         let root = PathBuf::from(self.settings.str("cartella"));
         let Ok(rd) = std::fs::read_dir(root) else { return };
         for e in rd.flatten() {
             let n = e.file_name().to_string_lossy().into_owned();
-            if n.starts_with(".pixelhub-") && n.ends_with(".part") {
+            if (n.starts_with(".cable-") || n.starts_with(".pixelhub-")) && n.ends_with(".part") {
                 if e.metadata().and_then(|m| m.modified()).ok().and_then(|m| m.elapsed().ok()).map_or(false, |d| d > Duration::from_secs(86400)) {
                     let _ = std::fs::remove_file(e.path());
                 }

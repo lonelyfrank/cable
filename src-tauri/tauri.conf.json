@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Pixel Hub",
+  "productName": "Cable",
   "version": "5.0.0",
-  "identifier": "it.frank.PixelHub",
+  "identifier": "it.frank.Cable",
   "build": {
     "frontendDist": "../ui"
   },

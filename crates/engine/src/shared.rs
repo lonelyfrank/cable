@@ -25,7 +25,9 @@ pub struct Shared {
 
 impl Shared {
     pub fn new(paths: Paths, port: u16) -> Arc<Shared> {
+        let migrazione = crate::migrate::run(&paths);        // prima di leggere impostazioni e identità
         let settings = Arc::new(Settings::load(&paths));
+        settings.avvisi.lock().unwrap().extend(migrazione.avvisi);
         let identity = Identity::load(&paths);
         let bus = Bus::new();
         let notifier = Arc::new(Notifier::default());

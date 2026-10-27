@@ -69,7 +69,7 @@ pub fn parse_peer_info(v: &Value) -> Option<PeerInfo> {
     let s = |k: &str, lim, def: &str| clean_label(o.get(k).and_then(Value::as_str).unwrap_or(""), lim, def);
     Some(PeerInfo {
         fp: fp.to_uppercase(), alias: s("alias", 60, "Dispositivo"), model: s("deviceModel", 60, ""),
-        kind: s("deviceType", 20, "mobile"), port,
+        kind: s("deviceType", 20, ""), port,
     })
 }
 

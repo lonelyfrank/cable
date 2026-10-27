@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pixel Hub</title>
+<title>Cable</title>
 <style>
 :root{
   --tint:.45;
@@ -306,6 +306,10 @@ details summary::-webkit-details-marker{display:none}
 
 /* ---------- preferiti, dispositivi non vicini, diagnostica ---------- */
 .disp.offline{opacity:.55}
+.dett{margin-top:8px;font-size:13px}.dett summary{cursor:pointer;color:var(--txt2)}
+.dett .f{display:flex;gap:8px;align-items:baseline;padding:3px 0}.dett .f b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.dett .f small{color:var(--txt2)}.dett .f.bad small{color:var(--rosso)}
+.sc-lista{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:16px 0}
 .av{position:relative}
 .stella{position:absolute;top:-4px;right:-6px;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:var(--txt3);background:var(--glass-forte);
   box-shadow:0 0 0 .5px var(--edge),0 3px 8px rgba(0,0,0,.18);opacity:0;transition:.2s}
@@ -356,8 +360,8 @@ pre.diag{margin-top:12px;max-height:300px}
     <div id="avvisoLS"></div>
     <div class="griglia">
       <div class="vetro card c7" id="cardPixel"></div>
-      <div class="vetro card c5">
-        <h2>Duplica schermo</h2>
+      <div class="vetro card c5" id="cardMirror">
+        <h2>Schermo Android (facoltativo)</h2>
         <div class="mirror" id="homeMirror"></div>
       </div>
       <div class="vetro card c7">
@@ -365,7 +369,7 @@ pre.diag{margin-top:12px;max-height:300px}
         <div class="drop" id="homeDrop">
           <div class="ico" data-i="su"></div>
           <b>Trascina qui foto e file</b>
-          <small>oppure <span class="link">sfoglia il computer</span></small>
+          <small>oppure <span class="link">sfoglia il computer</span> · poi scegli il destinatario</small>
         </div>
         <div id="homeInvii"></div>
       </div>
@@ -387,7 +391,7 @@ pre.diag{margin-top:12px;max-height:300px}
 
   <!-- ======================= SCHERMO ======================= -->
   <section class="pagina" data-p="schermo" data-t="Schermo">
-    <div class="titolo"><h1>Schermo</h1><p>Guarda il Pixel sul PC: perfetto per mostrare foto, video e app.</p></div>
+    <div class="titolo"><h1>Schermo Android</h1><p>Funzione facoltativa, solo per smartphone Android: guarda lo schermo sul PC (scrcpy). Non serve per inviare o ricevere file.</p></div>
     <div class="griglia">
       <div class="vetro card c12">
         <div class="schermo-hero">
@@ -398,10 +402,10 @@ pre.diag{margin-top:12px;max-height:300px}
         </div>
       </div>
       <div class="vetro card c6">
-        <h2>Sul Pixel</h2>
+        <h2>Sullo smartphone Android</h2>
         <div class="passi">
           <div class="passo"><div class="n">1</div><div><b>Abilita Debug USB</b><small>Impostazioni › Sistema › Opzioni sviluppatore</small></div></div>
-          <div class="passo"><div class="n">2</div><div><b>Collega il cavo USB</b><small>Accetta «Consenti debug USB» sul Pixel</small></div></div>
+          <div class="passo"><div class="n">2</div><div><b>Collega il cavo USB</b><small>Accetta «Consenti debug USB» sullo smartphone</small></div></div>
           <div class="passo"><div class="n">3</div><div><b id="passo3">Premi Avvia in questa pagina</b><small>Dopo qualche secondo si apre la finestra</small></div></div>
         </div>
       </div>
@@ -417,17 +421,17 @@ pre.diag{margin-top:12px;max-height:300px}
 
   <!-- ======================= CONDIVIDI ======================= -->
   <section class="pagina" data-p="condividi" data-t="Condividi">
-    <div class="titolo"><h1>Condividi</h1><p>File e testi tra i tuoi dispositivi e questo PC. Sul telefono tieni aperta l'app LocalSend.</p></div>
+    <div class="titolo"><h1>Condividi</h1><p>File e testi fra questo PC e i tuoi smartphone, Android o iPhone. Sullo smartphone tieni aperta un'app compatibile (ad es. LocalSend).</p></div>
     <div id="avvisoLS2"></div>
     <div class="griglia">
       <div class="vetro card c12">
-        <h2>Vicino a te <span class="dx"><span class="link" id="cerca">Cerca di nuovo</span></span></h2>
+        <h2>Vicino a te <span class="dx"><span class="link" id="cerca">Aggiorna</span></span></h2>
         <div class="vicini" id="vicini"></div>
-        <details style="margin-top:10px"><summary>Non lo trovi? Inserisci l'indirizzo IP del telefono ›</summary>
+        <details style="margin-top:10px"><summary>Non lo trovi? Inserisci l'indirizzo IP dello smartphone ›</summary>
           <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
             <input class="input" id="ipManuale" placeholder="es. 192.168.1.50" style="text-align:left">
             <button class="btn piccolo" id="ipVai">Collega</button>
-            <small class="vuoto">Lo trovi nell'app LocalSend del telefono, scheda Ricevi.</small>
+            <small class="vuoto">Lo trovi nell'app compatibile sullo smartphone (in LocalSend: scheda Ricevi).</small>
           </div></details>
       </div>
       <div class="vetro card c7">
@@ -456,8 +460,8 @@ pre.diag{margin-top:12px;max-height:300px}
   </section>
 
   <!-- ======================= PIXEL (ADB) ======================= -->
-  <section class="pagina" data-p="pixel" data-t="Pixel">
-    <div class="titolo"><h1>Pixel</h1><p>Collegato tramite ADB: batteria, spazio e le tue foto sul PC.</p></div>
+  <section class="pagina" data-p="pixel" data-t="Android USB">
+    <div class="titolo"><h1>Android USB</h1><p>Funzione facoltativa (ADB), solo per smartphone Android: batteria, spazio e importazione foto. Non serve per inviare o ricevere file.</p></div>
     <div id="cavo"></div>
   </section>
 
@@ -507,7 +511,7 @@ pre.diag{margin-top:12px;max-height:300px}
 
     <div class="sezione">Manutenzione</div>
     <div class="vetro lista">
-      <div class="riga"><div class="ic" style="background:#8e8e93" data-i="accendi"></div><div class="testo"><b>Esci da Pixel Hub</b><small>Chiude anche la ricezione in background</small></div><button class="btn piccolo" data-azione="esci">Esci</button></div>
+      <div class="riga"><div class="ic" style="background:#8e8e93" data-i="accendi"></div><div class="testo"><b>Esci da Cable</b><small>Chiude anche la ricezione in background</small></div><button class="btn piccolo" data-azione="esci">Esci</button></div>
       <div class="riga"><div class="ic" style="background:var(--arancio)" data-i="goccia"></div><div class="testo"><b>Ripristina impostazioni</b><small>Copia di sicurezza automatica; file e identità restano</small></div><button class="btn piccolo rosso" id="btnRipristina">Ripristina…</button></div>
       <div class="riga"><div class="ic" style="background:var(--rosso)" data-i="lucchetto"></div><div class="testo"><b>Rigenera identità</b><small>Solo se l'identità è danneggiata o vuoi cambiarla</small></div><button class="btn piccolo rosso" id="btnIdentita">Rigenera…</button></div>
     </div>
@@ -522,9 +526,9 @@ pre.diag{margin-top:12px;max-height:300px}
 
 <nav class="tabbar vetro" id="tabbar">
   <button class="tab on" data-p="home"><span data-i="casa"></span><span>Home</span></button>
-  <button class="tab" data-p="schermo"><span data-i="schermo"></span><span>Schermo</span></button>
+  <button class="tab" data-p="schermo" id="tabSchermo"><span data-i="schermo"></span><span>Schermo</span></button>
   <button class="tab" data-p="condividi"><span data-i="frecce"></span><span>Condividi</span><i class="punto" id="puntoCond"></i></button>
-  <button class="tab" data-p="pixel"><span data-i="telefono"></span><span>Pixel</span></button>
+  <button class="tab" data-p="pixel" id="tabPixel"><span data-i="telefono"></span><span>Android USB</span></button>
   <button class="tab" data-p="impostazioni"><span data-i="ingranaggio"></span><span>Impostazioni</span></button>
 </nav>
 
@@ -534,6 +538,7 @@ pre.diag{margin-top:12px;max-height:300px}
 
 <div class="wizard" id="wizard"><div class="wiz-card vetro" id="wizCard"></div></div>
 <div class="velo" id="veloPin"><div class="sheet vetro" id="sheetPin"></div></div>
+<div class="velo" id="veloScelta"><div class="sheet vetro" id="sheetScelta"></div></div>
 <div class="velo" id="veloConf"><div class="sheet vetro" id="sheetConf"></div></div>
 
 <script src="app.js"></script>
