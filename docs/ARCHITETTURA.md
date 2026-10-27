@@ -136,3 +136,8 @@ Conclusione onesta: il guadagno è netto su avvio e su memoria in background; **
 * Funzioni Android (ADB/scrcpy): portate dalla versione Python, non provate con un telefono reale; usano l'unico dispositivo ADB collegato.
 * Nautilus: nessuna estensione; lo script *Scripts › Invia con Cable* e `cable FILE...` (non provati in Nautilus reale).
 * Fedora Atomic, Flatpak non verificati. Il `.rpm` non è stato costruito (`rpmbuild` assente).
+
+## Aggiunte del ciclo «affidabilità» (vedi [AFFIDABILITA.md](AFFIDABILITA.md))
+* **Server**: i corpi JSON hanno una scadenza complessiva (`Limits::json_body_timeout`); l'upload dei file resta governato dall'inattività per chunk.
+* **Apertura di file** (guscio Tauri, non il motore): `src-tauri/src/apertura.rs` è una coda con id; l'evento `hub-apertura` è solo una sveglia, la pagina ritira (`richieste_apertura`) e conferma (`conferma_apertura`).
+* **Interfacce**: `discovery::classify_iface` è l'unica politica (LAN / virtuale / tunnel) per join multicast, annunci, sottoreti e gateway; gli indirizzi digitati dall'utente non passano da essa.

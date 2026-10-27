@@ -11,6 +11,16 @@ tenuto aperto insieme a Cable (usa la stessa porta).
 **Stack:** motore in **Rust** (tokio, hyper, rustls) + guscio **Tauri 2** con interfaccia HTML/CSS/JS. Un solo binario, nessun Python
 a runtime. La vecchia versione Python è in `legacy/python/` (riferimento e prove di interoperabilità).
 
+## Stato del progetto (da leggere prima)
+
+| Livello | Cosa significa oggi |
+|---|---|
+| **Implementato** | Invio/ricezione LocalSend v2 su HTTPS con impronta del certificato verificata, conferma manuale, wizard, ricordati/vicini/raggiungibili/confermati, migrazione da Pixel Hub, retry dei soli non completati, ADB/scrcpy opzionali. |
+| **Verificato automaticamente** | Test su loopback fra implementazioni interne (motore Rust ↔ Rust, ↔ peer Python dello stesso autore), scenario della finestra reale su Fedora 44/Wayland, CI su GitHub Actions (rustfmt, clippy, test, build desktop). Dettaglio in [docs/TEST.md](docs/TEST.md) e [docs/AFFIDABILITA.md](docs/AFFIDABILITA.md). |
+| **Provato su dispositivi reali** | **Nulla.** Nessuna prova con telefoni, con le app LocalSend ufficiali, con VPN o hotspot reali. Matrice da compilare: [docs/MATRICE-COMPATIBILITA.md](docs/MATRICE-COMPATIBILITA.md). |
+
+Cable **non è dichiarato stabile** né compatibile con tutti gli smartphone: finché la matrice non è compilata, è software non collaudato sul campo.
+
 ## Requisiti e compatibilità
 
 | | |
@@ -58,13 +68,13 @@ sudo dnf install cargo rust gcc gtk3-devel webkit2gtk4.1-devel libsoup3-devel ja
 | `scripts/dev.sh run [FILE...]` | avvia (debug) con la tua configurazione reale |
 | `scripts/dev.sh sandbox` | avvia con dati isolati in `/tmp`, senza multicast |
 | `scripts/dev.sh test` | test del motore: unitari + integrazione end-to-end su TLS reale |
-| `scripts/dev.sh ui-test` | prova la finestra reale (30 controlli) e salva gli screenshot |
+| `scripts/dev.sh ui-test` | prova la finestra reale (54 controlli) e salva gli screenshot. Usa un bus D-Bus isolato: il plugin di istanza unica non deve parlare con un Cable già aperto |
 | `scripts/dev.sh interop` | prova Python ↔ Rust fra le due implementazioni indipendenti |
 | `scripts/dev.sh release` | binario ottimizzato in `target/release/cable` |
 | `cargo run --release -p pixelhub-engine --example bench` | misure sul loopback (latenza, velocità, memoria) |
 
 Da riga di comando: `cable [--background] [FILE...]`, `--migra`, `--diagnostica`, `--versione`.
-RPM: `packaging/cable.spec` (usa `scripts/dev.sh vendor`) — **non costruito** (`rpmbuild` assente).
+RPM: `packaging/cable.spec` (usa `scripts/dev.sh vendor`); esito della costruzione in contenitore in [docs/PACCHETTO.md](docs/PACCHETTO.md).
 Fedora Atomic, Flatpak: **non verificati**. Se Pixel Hub 5.0 è ancora aperto, Cable non parte (stessa porta): chiudilo prima.
 
 ## Migrazione da Pixel Hub
@@ -101,6 +111,7 @@ Dettagli e ritorno indietro: [docs/ROLLBACK.md](docs/ROLLBACK.md). Cartelle dei 
   completati. Se la connessione cade dopo l'ultimo byte, l'esito sul destinatario è **incerto** e Cable lo dice: riprovando può
   nascere una copia doppia (mai una sovrascrittura).
 * Nessuna prova con telefoni reali né con le app ufficiali; multicast su Wi-Fi/hotspot reali, firewalld e VPN non provati.
+  La scoperta automatica ignora tunnel VPN e interfacce virtuali (la diagnostica elenca quali e perché); l'IP digitato a mano non è mai filtrato.
 * Solo IPv4; i file speciali e i collegamenti simbolici nelle cartelle inviate sono ignorati.
 * L'estensione per Nautilus non c'è: c'è lo script *Scripts › Invia con Cable* (nessun pacchetto in più). Altri file manager:
   `cable FILE...` da terminale o dal menu «Apri con».
@@ -108,5 +119,5 @@ Dettagli e ritorno indietro: [docs/ROLLBACK.md](docs/ROLLBACK.md). Cartelle dei 
 ## Documentazione
 
 [Architettura e decisioni](docs/ARCHITETTURA.md) · [Wizard](docs/WIZARD.md) · [Esiti dei test](docs/TEST.md) ·
-[Checklist manuale](docs/CHECKLIST-MANUALE.md) · [Migrazione e ritorno indietro](docs/ROLLBACK.md).
+[Checklist manuale](docs/CHECKLIST-MANUALE.md) · [Matrice di compatibilità](docs/MATRICE-COMPATIBILITA.md) · [Affidabilità](docs/AFFIDABILITA.md) · [Pacchetto](docs/PACCHETTO.md) · [Migrazione e ritorno indietro](docs/ROLLBACK.md).
 I file originali sono in `reference/` (l'installer 3.1 non è mai stato eseguito).

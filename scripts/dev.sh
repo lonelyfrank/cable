@@ -18,7 +18,7 @@ case "${1:-run}" in
   ui-test)   shift || true; d=$(mktemp -d /tmp/cable-uitest.XXXXXX)
              cargo build -q -p cable --features ui-test
              port=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])')
-             HOME="$d" HUB_NO_MULTICAST=1 HUB_LS_PORT=$port HUB_UI_SHOTS="${1:-$PWD/docs/screenshots-v5}" exec target/debug/cable ;;
+             HOME="$d" HUB_NO_MULTICAST=1 HUB_LS_PORT=$port HUB_UI_SHOTS="${1:-$PWD/docs/screenshots-v5}" exec dbus-run-session -- target/debug/cable ;;   # bus isolato: l'istanza unica non deve inoltrare a un Cable già aperto
   interop)   exec tests/interop/run.sh ;;
   release)   exec cargo build --release -p cable ;;
   vendor)    v=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2); rm -rf vendor

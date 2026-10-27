@@ -58,6 +58,9 @@ Parti da zero con `scripts/dev.sh sandbox` (dati isolati) o con una HOME pulita.
 - [ ] Con LocalSend per PC aperto: Cable segnala «porta occupata», dopo averlo chiuso *Riprova* funziona.
 - [ ] Con **Pixel Hub 5.0** aperto: `cable` rifiuta di partire con un messaggio chiaro (codice 3).
 - [ ] Due volte `cable file1`: una sola istanza; la seconda inoltra i file e si apre la scelta del destinatario (senza tornare alla Home).
+- [ ] Con Cable **in background e senza finestra** (`cable --background`), da una cartella diversa: `cd ~/Documenti && cable "foto 1.jpg" altro.pdf` → la finestra si ricrea e la scelta del
+      destinatario mostra i due file (percorsi relativi alla cartella da cui hai lanciato, non a quella della prima istanza); riaprendo la finestra non ricompaiono.
+- [ ] Doppio clic sull'icona mentre Cable è già aperto e minimizzato: torna in primo piano senza file fantasma.
 
 ## 10. Migrazione da Pixel Hub (sul tuo sistema reale)
 - [ ] Chiudi Pixel Hub, `scripts/installa-utente.sh`: «Cable» e l'icona compaiono nel menu; il vecchio lanciatore non c'è più.

@@ -42,7 +42,7 @@ async fn until(app: &AppHandle, cond: &str, secs: u64) -> bool {
     false
 }
 
-async fn shot(app: &AppHandle, dir: &PathBuf, name: &str) {
+async fn shot(app: &AppHandle, dir: &std::path::Path, name: &str) {
     tokio::time::sleep(Duration::from_millis(700)).await; // lascia finire le animazioni
     let (tx, rx) = oneshot::channel::<()>();
     let path = dir.join(format!("{name}.png"));
@@ -89,7 +89,7 @@ pub fn spawn(app: AppHandle, engine: Arc<Engine>) {
     });
 }
 
-async fn scenario(app: &AppHandle, a: &Arc<Engine>, shots: &PathBuf, c: &mut Checks) {
+async fn scenario(app: &AppHandle, a: &Arc<Engine>, shots: &std::path::Path, c: &mut Checks) {
     let tmp = tempfile::tempdir().unwrap();
     let sock = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let pport = sock.local_addr().unwrap().port();
@@ -149,7 +149,7 @@ async fn scenario(app: &AppHandle, a: &Arc<Engine>, shots: &PathBuf, c: &mut Che
     );
     c.ok(
         "passo 3: salvato come preferito confermato",
-        a.sh.settings.preferiti().get(&peer.sh.fingerprint()).map_or(false, |f| f["confermato"] == json!(true)),
+        a.sh.settings.preferiti().get(&peer.sh.fingerprint()).is_some_and(|f| f["confermato"] == json!(true)),
         "",
     );
     js(app, "AZ.wizAvanti(); return 1").await;
@@ -366,7 +366,7 @@ async fn aperture(app: &AppHandle, a: &Arc<Engine>, peer: &Arc<Engine>, tmp: &st
     super::apri_con_file(app, &["tre.txt".into()], &dir);
     c.ok(
         "finestra nascosta: riportata in primo piano con la richiesta",
-        until(app, &n_sel(1), 10).await && app.get_webview_window("main").map_or(false, |w| w.is_visible().unwrap_or(false)),
+        until(app, &n_sel(1), 10).await && app.get_webview_window("main").is_some_and(|w| w.is_visible().unwrap_or(false)),
         "",
     );
     chiudi(app).await;

@@ -25,10 +25,10 @@ case "${1:-installa}" in
     if pgrep -f '^python3 .*(pixel_hub\.py|-m pixelhub)' >/dev/null; then
       echo "Una versione Python di Pixel Hub è in esecuzione: chiudila prima."; exit 1
     fi
-    if [[ ! -x "$SRC/target/release/cable" ]]; then
-      command -v cargo >/dev/null || { echo "cargo non trovato: vedi le dipendenze in cima a questo script."; exit 1; }
-      (cd "$SRC" && cargo build --release -p cable)
-    fi
+    # ricompila sempre (incrementale: è rapido se nulla è cambiato), così non si installa un binario vecchio di un altro commit
+    if command -v cargo >/dev/null; then (cd "$SRC" && cargo build --release -p cable)
+    elif [[ ! -x "$SRC/target/release/cable" ]]; then echo "cargo non trovato: vedi le dipendenze in cima a questo script."; exit 1
+    else echo "Attenzione: cargo non trovato, installo il binario già presente in target/release (potrebbe non corrispondere ai sorgenti)."; fi
     mkdir -p "$APPS" "$BAK" "$(dirname "$BIN")"
     # il lanciatore di Pixel Hub si salva (non si cancella) e poi si toglie, per non avere due icone
     if [[ -f "$APPS/$OLD_ID.desktop" ]]; then
