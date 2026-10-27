@@ -3,7 +3,7 @@
 
 Name:           cable
 Version:        6.0.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Trasferimento rapido di file e testi via LocalSend per Fedora GNOME
 License:        LicenseRef-proprietary
 URL:            https://example.invalid/cable
@@ -65,7 +65,7 @@ done
 desktop-file-validate %{buildroot}%{_datadir}/applications/it.frank.Cable.desktop
 appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/it.frank.Cable.metainfo.xml
 export CARGO_HOME=$PWD/.cargo-home
-cargo test --release --offline --locked -p pixelhub-engine --lib --test receiver --test e2e
+cargo test --release --offline --locked -p pixelhub-engine --lib --test receiver --test e2e --test server_body
 
 %files
 %doc README.md docs/
@@ -75,5 +75,8 @@ cargo test --release --offline --locked -p pixelhub-engine --lib --test receiver
 %{_datadir}/icons/hicolor/*/apps/it.frank.Cable.png
 
 %changelog
+* Tue Oct 27 2026 Mantenitore - 6.0.0-2
+- Scadenza sul corpo JSON del server; coda di apertura file; politica interfacce VPN/virtuali (vedi docs/AFFIDABILITA.md)
+
 * Tue Oct 27 2026 Mantenitore - 6.0.0-1
 - Il progetto diventa Cable; migrazione da Pixel Hub; nuova icona

@@ -35,6 +35,10 @@ case "${1:-installa}" in
       cp -p "$APPS/$OLD_ID.desktop" "$BAK/$OLD_ID.desktop"; rm -f "$APPS/$OLD_ID.desktop"
       echo "Lanciatore di Pixel Hub salvato in $BAK e tolto dal menu."
     fi
+    if [[ -x /usr/bin/cable ]]; then
+      echo "Attenzione: esiste anche il pacchetto di sistema (/usr/bin/cable). Questa installazione in ~/.local/bin ha la precedenza nel PATH"
+      echo "e nel menu: per usare il pacchetto, esegui «$0 rimuovi». Controlla quale parte: «cable --versione» e «command -v cable»."
+    fi
     install -m755 "$SRC/target/release/cable" "$BIN"
     for d in "$SRC"/data/icons/hicolor/*/apps; do
       s="$(basename "$(dirname "$d")")"
@@ -58,7 +62,10 @@ SH
     echo "Le impostazioni e l'identità di Pixel Hub (~/.config/pixel-hub, ~/.local/share/pixel-hub) non vengono modificate:"
     echo "al primo avvio Cable ne importa una copia." ;;
   rimuovi)
-    pkill -x cable 2>/dev/null || true
+    # ferma solo il Cable avviato da QUESTA installazione (non un eventuale pacchetto di sistema in /usr/bin)
+    for pid in $(pgrep -x cable 2>/dev/null || true); do
+      [[ "$(readlink "/proc/$pid/exe" 2>/dev/null || true)" == "$BIN" ]] && kill "$pid" 2>/dev/null || true
+    done
     rm -f "$BIN" "$APPS/$ID.desktop" "$NAUT"
     for d in "$ICONS"/*/apps; do rm -f "$d/$ID.png"; done
     [[ -f "$BAK/$OLD_ID.desktop" ]] && cp -p "$BAK/$OLD_ID.desktop" "$APPS/$OLD_ID.desktop" && echo "Ripristinato il lanciatore di Pixel Hub."
