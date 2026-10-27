@@ -57,7 +57,9 @@ const nomeDisp = d => d.etichetta || d.alias;
 /* quattro cose diverse: ricordato, vicino (presenza), raggiungibile (connessione riuscita), confermato (verifica con codice) */
 const statoDisp = d => d.vicino ? (d.raggiungibile === false ? "Visto, ma non risponde" : d.raggiungibile ? "Raggiungibile" : "Vicino")
   : (d.ricordato ? "Ricordato · non vicino" : "Non vicino");
-function set(el, html) { if (typeof el === "string") el = $(el); if (el && el._h !== html) { el._h = html; el.innerHTML = html; icone(el); } }
+function set(el, html) { if (typeof el === "string") el = $(el); if (el && el._h !== html) { el._h = html; el.innerHTML = html; icone(el); tastiera(el); } }
+/* le righe dei dispositivi sono <div>: le rende raggiungibili e attivabili da tastiera (Tab, Invio, Spazio) */
+function tastiera(radice) { radice.querySelectorAll(".disp[data-fp], [data-file]").forEach(x => { if (!x.hasAttribute("tabindex")) { x.tabIndex = 0; x.setAttribute("role", "button"); } }); }
 /* canale verso il motore (comandi Tauri: niente server HTTP, niente token) */
 const TAURI = window.__TAURI__;
 async function api(m, a) {
@@ -470,7 +472,7 @@ function renderScelta() {
   set("#sheetScelta", `<h3>A chi vuoi inviare?</h3><p>${esc(quali)}${n > 1 ? ` · ${n} elementi` : ""}</p>
     <div class="sc-lista">${v.length ? v.map(d => `<div class="disp" data-azione="scegliDest" data-fp="${esc(d.fp)}" title="${esc(d.ip)}">
         <div class="av">${d.tipo === "desktop" ? I.pc : esc(iniziale(d.alias))}</div><b>${esc(nomeDisp(d))}</b><small>${esc(statoDisp(d))}</small></div>`).join("")
-      : `<p class="vuoto">Nessun dispositivo vicino. Apri LocalSend sullo smartphone e tocca <span class="link" data-azione="aggiorna">Aggiorna</span>.</p>`}</div>
+      : `<p class="vuoto">Nessun dispositivo vicino. Apri LocalSend sullo smartphone (stessa Wi-Fi) e tocca <span class="link" tabindex="0" role="button" data-azione="aggiorna">Aggiorna</span>. Se non compare, <span class="link" tabindex="0" role="button" data-azione="sceltaIp">inserisci l'indirizzo IP a mano</span>, oppure <span class="link" tabindex="0" role="button" data-azione="sceltaCoda">metti i file in coda</span>.</p>`}</div>
     <div class="azioni"><button class="btn" data-azione="sceltaChiudi">Annulla</button><button class="btn" data-azione="sceltaCoda">Metti in coda</button></div>`);
   velo.classList.add("on");
 }
@@ -519,6 +521,7 @@ const AZ = {
     if (d && p) { destSel = d.fp; inviaA(d, p); }
   },
   sceltaChiudi() { sceltaPercorsi = null; renderScelta(); },
+  sceltaIp() { AZ.sceltaCoda(); const d = $("#ipManuale")?.closest("details"); if (d) d.open = true; setTimeout(() => $("#ipManuale")?.focus(), 50); },
   sceltaCoda() { coda.push(...sceltaPercorsi.map(daPercorso)); sceltaPercorsi = null; renderScelta(); vai("condividi"); },
   async idIgnora(e) { await api("identita_ignora", { fp: e.dataset.nuovo }); },
   async idSostituisci(e) {
@@ -535,7 +538,12 @@ document.addEventListener("click", ev => {
   const f = ev.target.closest("[data-file]");
   if (f) api("apri", { path: f.dataset.file });
 });
-document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "pinCampo") document.querySelector('[data-azione="pinSi"]')?.click(); });
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && e.target.id === "pinCampo") document.querySelector('[data-azione="pinSi"]')?.click();
+  // Invio o Spazio su una riga-pulsante equivale al clic; Esc chiude la scelta del destinatario (mai una richiesta in arrivo: non rifiuta da sola)
+  else if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".disp[data-fp], [data-file], .link[tabindex]")) { e.preventDefault(); e.target.click(); }
+  else if (e.key === "Escape" && sceltaPercorsi) AZ.sceltaChiudi();
+});
 async function copiaTesto(t) {
   try { await navigator.clipboard.writeText(t); return; } catch (e) {}
   const a = document.createElement("textarea"); a.value = t; document.body.appendChild(a); a.select(); document.execCommand("copy"); a.remove();

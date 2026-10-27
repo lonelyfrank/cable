@@ -205,6 +205,7 @@ async fn scenario(app: &AppHandle, a: &Arc<Engine>, shots: &PathBuf, c: &mut Che
     c.ok("«Salta per ora» chiude il wizard", until(app, "!document.getElementById('wizard').classList.contains('on')", 5).await, "");
     c.ok("nessun errore JavaScript (prima delle prove di apertura)", js(app, "return window.__errs").await == "0", "");
     aperture(app, a, &peer, tmp.path(), c).await;
+    percorso_utente(app, a, &peer, tmp.path(), c).await;
     c.ok("nessun errore JavaScript (dopo le prove di apertura)", js(app, "return window.__errs").await == "0", "");
     peer.stop().await;
 }
@@ -272,4 +273,61 @@ async fn aperture(app: &AppHandle, a: &Arc<Engine>, peer: &Arc<Engine>, tmp: &st
     super::mostra(app);
     c.ok("riapertura senza nuove richieste: nessun file ripresentato", until(app, "typeof S !== 'undefined' && S", 30).await && { tokio::time::sleep(Duration::from_millis(700)).await; js(app, &format!("return String({sheet})")).await == "false" }, "");
     c.ok("nessun invio parte da solo (fine prove di apertura)", nessun_invio(), "");
+}
+
+/// Tastiera, assenza di dispositivi, avvisi d'identità. Le azioni «Apri»/«Mostra» non si provano qui: lancerebbero
+/// applicazioni vere sul desktop di chi esegue il test (il motore rifiuta i percorsi fuori dalle cartelle consentite: test in ui_api).
+async fn percorso_utente(app: &AppHandle, a: &Arc<Engine>, peer: &Arc<Engine>, tmp: &std::path::Path, c: &mut Checks) {
+    js(app, "vai('condividi'); return 1").await;
+    c.ok("tastiera: le righe dei dispositivi sono raggiungibili con Tab", until(app, "document.querySelector('.disp[data-fp]')?.tabIndex === 0 && document.querySelector('.disp[data-fp]').getAttribute('role') === 'button'", 10).await, "");
+    // nessun dispositivo: indicazioni utili, aggiornamento e IP manuale, tutto raggiungibile da tastiera, Esc annulla
+    js(app, "window.__vicini = vicini; window.vicini = () => []; chiediDestinatario(['/tmp/x.txt']); return 1").await;
+    c.ok("nessun dispositivo: la scelta spiega cosa fare (Aggiorna, IP a mano, coda)",
+         until(app, "/Nessun dispositivo vicino/.test(document.getElementById('sheetScelta').innerText) && /inserisci l.indirizzo IP a mano/.test(document.getElementById('sheetScelta').innerText) && document.querySelectorAll('#sheetScelta .link[tabindex=\"0\"]').length === 3", 10).await, "");
+    js(app, "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'})); return 1").await;
+    c.ok("tastiera: Esc chiude la scelta del destinatario", until(app, "!document.getElementById('veloScelta').classList.contains('on')", 5).await, "");
+    js(app, "chiediDestinatario(['/tmp/x.txt']); return 1").await;
+    js(app, "document.querySelector('#sheetScelta [data-azione=sceltaIp]').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})); return 1").await;
+    c.ok("IP manuale dalla scelta: porta a Condividi con il campo IP attivo", until(app, "document.activeElement && document.activeElement.id === 'ipManuale'", 5).await, "");
+    js(app, "window.vicini = window.__vicini; sceltaPercorsi = null; renderScelta(); return 1").await;
+
+    // invio guidato solo da tastiera: Invio sul destinatario nella scelta → richiesta sul telefono (nulla parte prima)
+    let f = tmp.join("da tastiera.txt");
+    std::fs::write(&f, b"ciao").unwrap();
+    let prima: Vec<String> = peer.receiver.snapshot().0.as_array().unwrap().iter().map(|i| i["id"].as_str().unwrap().to_string()).collect();
+    js(app, &format!("chiediDestinatario([{}]); return 1", serde_json::to_string(&f.to_string_lossy()).unwrap())).await;
+    c.ok("scelta: i destinatari sono pulsanti da tastiera e nulla parte da solo",
+         until(app, "document.querySelector('#sheetScelta .disp[data-azione=scegliDest]')?.tabIndex === 0", 10).await && peer.receiver.snapshot().0.as_array().unwrap().len() == prima.len(), "");
+    js(app, "document.querySelector('#sheetScelta .disp[data-azione=scegliDest]').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})); return 1").await;
+    let end = Instant::now() + Duration::from_secs(10);
+    let rid = loop {
+        let nuova = peer.receiver.snapshot().0.as_array().unwrap().iter().find(|i| i["stato"] == "attesa" && !prima.contains(&i["id"].as_str().unwrap().to_string())).map(|r| r["id"].as_str().unwrap().to_string());
+        if nuova.is_some() || Instant::now() > end { break nuova; }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    c.ok("invio da tastiera: Invio sul destinatario avvia la richiesta verso di lui", rid.is_some(), "");
+    if let Some(rid) = rid {
+        peer.decidi(&rid, Some(vec![]));                  // il destinatario rifiuta
+        c.ok("invio da tastiera: il rifiuto del destinatario è mostrato come tale", until(app, "S.invii.some(j => j.stato === 'rifiutato')", 10).await, "");
+    }
+
+    // avviso d'identità: un dispositivo ricordato (e confermato) che oggi non si vede, e un omonimo con certificato diverso
+    let antico = "F0".repeat(32);
+    a.sh.settings.conferma_dispositivo(&antico, "Telefono di Anna", "10.0.0.2", 53317);
+    let p2 = Engine::new(Paths::under(&tmp.join("p2")), { let s = std::net::TcpListener::bind("127.0.0.1:0").unwrap(); s.local_addr().unwrap().port() }, false);
+    p2.sh.settings.aggiorna(json!({"nome_pc": "Telefono di Anna"}).as_object().unwrap());
+    p2.start().await;
+    let trovati = p2.cerca(Some("127.0.0.1"), Some(a.port())).await;
+    let visto = until(app, "document.querySelectorAll('[data-azione=idIgnora]').length >= 1", 10).await;
+    c.ok("avviso d'identità: stesso nome, certificato diverso → avviso con «Ignora» e «È lo stesso: sostituisci»",
+         visto && js(app, "return String(document.querySelectorAll('[data-azione=idSostituisci]').length > 0)").await == "true",
+         &format!("p2.cerca={trovati}, cambi nel motore: {}", a.sh.registry.identity_changes().len()));
+    if visto {
+        js(app, "document.querySelector('[data-azione=idIgnora]').click(); return 1").await;
+        c.ok("avviso d'identità: «Ignora» lo toglie e il dispositivo ricordato resta confermato com'era",
+             until(app, "document.querySelectorAll('[data-azione=idIgnora]').length === 0", 10).await
+                 && a.sh.settings.preferiti().get(&antico).is_some_and(|f| f["confermato"] == json!(true)) && !a.sh.settings.preferiti().contains_key(&p2.sh.fingerprint()), "");
+    }
+    p2.stop().await;
+    c.ok("nessun errore JavaScript (percorso utente)", js(app, "return window.__errs").await == "0", "");
 }

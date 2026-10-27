@@ -53,6 +53,9 @@ button{cursor:pointer;border:0;background:none}
 .sfondo i:nth-child(4){width:30vw;height:30vw;left:-4%;bottom:6%;background:var(--b4);animation-duration:41s;animation-delay:-22s}
 @keyframes vaga{0%{transform:translate(0,0) scale(1)}50%{transform:translate(6vw,4vh) scale(1.08)}100%{transform:translate(-5vw,-3vh) scale(.95)}}
 @media (prefers-reduced-motion:reduce){.sfondo i{animation:none}}
+/* focus da tastiera sempre visibile */
+:focus-visible{outline:2px solid var(--blu);outline-offset:2px}
+.link:focus-visible{border-radius:4px}
 
 /* ---------- vetro ---------- */
 .vetro{position:relative;background:var(--glass);
