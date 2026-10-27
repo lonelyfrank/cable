@@ -22,23 +22,82 @@ pub const MCAST: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 167);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NetEvent { Network, Resume }
 
+/// Come un'interfaccia partecipa alla rete di Cable.
+///
+/// Politica (una sola, usata da join multicast, annunci, sottoreti locali, gateway e diagnostica):
+/// * **Scoperta automatica** (multicast): solo interfacce `Lan` (Wi-Fi, Ethernet, hotspot, USB tethering).
+///   Tunnel VPN e interfacce virtuali sono escluse: non portano telefoni e gli annunci non devono uscire in una VPN.
+/// * **Connessioni esplicite** (IP digitato, dispositivo ricordato, invio): nessun filtro per interfaccia.
+///   Il percorso lo sceglie il sistema operativo; Cable non blocca un indirizzo perché passa da un tunnel.
+/// * Nessun ripiego sull'interfaccia predefinita: con una VPN potrebbe essere proprio il tunnel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IfaceKind { Lan, Virtual, Tunnel }
+
 /// Interfacce di contenitori e macchine virtuali: non portano dispositivi LocalSend e sporcano elenco e annunci.
 pub fn is_virtual_iface(name: &str) -> bool {
-    ["docker", "br-", "veth", "virbr", "vboxnet", "vmnet", "lxcbr", "lxdbr", "podman", "cni", "flannel", "cali", "kube", "tailscale"]
+    ["docker", "br-", "veth", "virbr", "vnet", "macvtap", "vboxnet", "vmnet", "lxcbr", "lxdbr", "incusbr", "podman", "cni", "flannel", "cali", "kube", "cilium", "weave", "waydroid", "dummy"]
         .iter().any(|p| name.starts_with(p))
 }
 /// Tunnel/VPN: nessuna scoperta multicast e nessun «gateway del telefono» da cercare lì.
-pub fn is_tunnel_iface(name: &str) -> bool { ["tun", "tap", "wg", "ppp", "vpn", "ipsec", "zt"].iter().any(|p| name.starts_with(p)) }
+pub fn is_tunnel_iface(name: &str) -> bool {
+    ["tun", "tap", "wg", "ppp", "vpn", "ipsec", "zt", "tailscale", "nordlynx", "proton", "mullvad", "utun", "gre", "ipip", "sit"].iter().any(|p| name.starts_with(p))
+}
+pub fn classify_iface(name: &str) -> IfaceKind {
+    if is_tunnel_iface(name) { IfaceKind::Tunnel } else if is_virtual_iface(name) { IfaceKind::Virtual } else { IfaceKind::Lan }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocalNet { pub name: String, pub ip: Ipv4Addr, pub mask: Ipv4Addr }
 
+/// Un indirizzo IPv4 locale con l'esito della politica e la ragione, per la diagnostica.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IfaceInfo { pub name: String, pub ip: Ipv4Addr, pub mask: Ipv4Addr, pub usata: bool, pub motivo: &'static str }
+
+/// Applica la politica a un elenco di (nome, ip, maschera, loopback). Pura: testabile senza toccare la rete.
+pub fn classify_addrs(addrs: impl IntoIterator<Item = (String, Ipv4Addr, Ipv4Addr, bool)>) -> Vec<IfaceInfo> {
+    addrs.into_iter().map(|(name, ip, mask, lo)| {
+        let (usata, motivo) = if lo || ip.is_loopback() { (false, "indirizzo interno del computer") }
+            else if ip.is_link_local() { (false, "indirizzo 169.254.x.x: la rete non ha assegnato un indirizzo") }
+            else { match classify_iface(&name) {
+                IfaceKind::Lan => (true, "rete locale (Wi-Fi, Ethernet o hotspot)"),
+                IfaceKind::Tunnel => (false, "tunnel VPN: la scoperta automatica non lo attraversa (l'IP a mano funziona comunque)"),
+                IfaceKind::Virtual => (false, "interfaccia virtuale di contenitori o macchine virtuali"),
+            } };
+        IfaceInfo { name, ip, mask, usata, motivo }
+    }).collect()
+}
+
+/// Tutti gli indirizzi IPv4 del sistema, ciascuno con l'esito della politica.
+pub fn interfaces() -> Vec<IfaceInfo> {
+    classify_addrs(if_addrs::get_if_addrs().unwrap_or_default().into_iter().filter_map(|i| {
+        let lo = i.is_loopback();
+        match i.addr { if_addrs::IfAddr::V4(a) => Some((i.name.clone(), a.ip, a.netmask, lo)), _ => None }
+    }))
+}
+
+/// Reti candidate alla scoperta automatica (solo `IfaceKind::Lan`).
 pub fn local_nets() -> Vec<LocalNet> {
-    if_addrs::get_if_addrs().unwrap_or_default().into_iter().filter(|i| !i.is_loopback()).filter(|i| !is_virtual_iface(&i.name))
-        .filter_map(|i| match i.addr { if_addrs::IfAddr::V4(a) if !a.ip.is_link_local() => Some(LocalNet { name: i.name.clone(), ip: a.ip, mask: a.netmask }), _ => None }).collect()
+    interfaces().into_iter().filter(|i| i.usata).map(|i| LocalNet { name: i.name, ip: i.ip, mask: i.mask }).collect()
 }
 
 pub fn local_ipv4() -> Vec<Ipv4Addr> { local_nets().into_iter().map(|n| n.ip).collect() }
+
+/// Righe di diagnostica: interfacce usate ed escluse, con la ragione.
+pub fn interfaces_report(all: &[IfaceInfo]) -> Vec<String> {
+    let usate: Vec<String> = all.iter().filter(|i| i.usata).map(|i| format!("{} {}", i.name, i.ip)).collect();
+    let mut l = vec![format!("Interfacce usate per la scoperta: {}", if usate.is_empty() { "nessuna".to_string() } else { usate.join(", ") })];
+    let escluse: Vec<String> = all.iter().filter(|i| !i.usata && !i.ip.is_loopback()).map(|i| format!("{} {} ({})", i.name, i.ip, i.motivo)).collect();
+    if !escluse.is_empty() { l.push(format!("Interfacce escluse: {}", escluse.join("; "))); }
+    l
+}
+
+/// Quali membership multicast lasciare e quali prendere per passare da `joined` a `desired`.
+/// Con `force` si lascia e si riprende tutto: dopo un cambio rete o una sospensione le membership possono essere
+/// decadute senza che il processo se ne accorga.
+pub fn plan_membership(joined: &BTreeSet<Ipv4Addr>, desired: &BTreeSet<Ipv4Addr>, force: bool) -> (Vec<Ipv4Addr>, Vec<Ipv4Addr>) {
+    if force { return (joined.iter().copied().collect(), desired.iter().copied().collect()); }
+    (joined.difference(desired).copied().collect(), desired.difference(joined).copied().collect())
+}
 
 pub fn in_local_subnet(ip: &str, nets: &[LocalNet]) -> bool {
     let Ok(ip) = ip.parse::<Ipv4Addr>() else { return false };
@@ -114,8 +173,7 @@ impl Discovery {
                 self.sh.registry.expire_presence(Some(&|ip: &str| in_local_subnet(ip, &nets)));
             }
         }
-        self.joined.lock().unwrap().clear();
-        self.join();
+        self.sync_membership(true);
         self.sh.bus.emit("rete");
         let me = self.clone();
         tokio::spawn(async move { me.refresh().await; });
@@ -130,14 +188,21 @@ impl Discovery {
         UdpSocket::from_std(s.into())
     }
 
-    fn join(&self) {
+    /// Allinea le membership multicast alle interfacce LAN attuali: lascia quelle sparite, prende le nuove.
+    /// Nessun ripiego su 0.0.0.0 (lascerebbe scegliere al sistema l'interfaccia predefinita, magari una VPN).
+    fn join(&self) { self.sync_membership(false); }
+
+    fn sync_membership(&self, force: bool) {
         let Some(s) = self.sock.lock().unwrap().clone() else { return };
+        let desired: BTreeSet<Ipv4Addr> = local_ipv4().into_iter().collect();
         let mut j = self.joined.lock().unwrap();
-        for ip in local_ipv4().into_iter().chain([Ipv4Addr::UNSPECIFIED]) {
-            if j.contains(&ip) { continue; }
-            if s.join_multicast_v4(MCAST, ip).is_ok() { j.insert(ip); }
-        }
+        let (leave, join) = plan_membership(&j, &desired, force);
+        for ip in leave { let _ = s.leave_multicast_v4(MCAST, ip); j.remove(&ip); }
+        for ip in join { if s.join_multicast_v4(MCAST, ip).is_ok() { j.insert(ip); } }
     }
+
+    /// Interfacce sulle quali si è effettivamente in ascolto (diagnostica e test).
+    pub fn membership(&self) -> Vec<Ipv4Addr> { self.joined.lock().unwrap().iter().copied().collect() }
 
     async fn listen(self: Arc<Self>) {
         while !self.cancel.is_cancelled() {
@@ -200,17 +265,14 @@ impl Discovery {
         let data = serde_json::to_vec(&msg).unwrap();
         let dest = SocketAddr::from(SocketAddrV4::new(MCAST, self.sh.port()));
         let ips = local_ipv4();
-        let mut sent = false;
         for ip in &ips {
             let Ok(s) = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)) else { continue };
             let ok = s.set_multicast_if_v4(ip).is_ok() && s.set_multicast_ttl_v4(1).is_ok() && s.set_nonblocking(true).is_ok()
                 && s.bind(&SocketAddr::from(SocketAddrV4::new(*ip, 0)).into()).is_ok();
             if !ok { continue; }
-            if let Ok(u) = UdpSocket::from_std(s.into()) { if u.send_to(&data, dest).await.is_ok() { sent = true; } }
+            if let Ok(u) = UdpSocket::from_std(s.into()) { let _ = u.send_to(&data, dest).await; }
         }
-        if !sent {
-            if let Ok(u) = UdpSocket::bind("0.0.0.0:0").await { let _ = u.send_to(&data, dest).await; }
-        }
+        // nessun ripiego sull'interfaccia predefinita: senza rete locale non si annuncia nulla (e mai dentro una VPN)
     }
 
     async fn periodic(self: Arc<Self>, mut rx: mpsc::UnboundedReceiver<NetEvent>) {
@@ -328,10 +390,73 @@ mod tests {
 
     #[test]
     fn virtual_and_tunnel_interfaces() {
-        for n in ["docker0", "br-1a2b", "veth123", "virbr0", "podman1", "cni0", "tailscale0"] { assert!(is_virtual_iface(n), "{n}"); }
-        for n in ["wlp2s0", "enp3s0", "eth0", "wlan0", "enx0011", "usb0", "tun0", "wg0"] { assert!(!is_virtual_iface(n), "{n}"); }
-        for n in ["tun0", "wg0", "ppp0", "tap1"] { assert!(is_tunnel_iface(n), "{n}"); }
-        assert!(!is_tunnel_iface("wlp2s0") && !is_tunnel_iface("enp3s0"));
+        for n in ["docker0", "br-1a2b", "veth123", "virbr0", "vnet3", "podman1", "cni0", "lxdbr0"] { assert!(is_virtual_iface(n), "{n}"); }
+        for n in ["wlp2s0", "enp3s0", "eth0", "wlan0", "enx0011", "usb0", "br0", "tun0", "wg0"] { assert!(!is_virtual_iface(n), "{n}"); }
+        for n in ["tun0", "wg0", "ppp0", "tap1", "tailscale0", "zt5u4abcde", "nordlynx", "proton0"] { assert!(is_tunnel_iface(n), "{n}"); }
+        for n in ["wlp2s0", "enp3s0", "br0", "usb0", "docker0"] { assert!(!is_tunnel_iface(n), "{n}"); }
+    }
+
+    fn net(name: &str, ip: &str) -> (String, Ipv4Addr, Ipv4Addr, bool) { (name.into(), ip.parse().unwrap(), "255.255.255.0".parse().unwrap(), name == "lo") }
+    fn used(v: &[IfaceInfo]) -> Vec<&str> { v.iter().filter(|i| i.usata).map(|i| i.name.as_str()).collect() }
+
+    #[test]
+    fn policy_keeps_lan_and_excludes_tunnels_and_virtual_ifaces() {
+        // Wi-Fi, Ethernet e hotspot restano
+        assert_eq!(used(&classify_addrs([net("wlp2s0", "192.168.1.5")])), ["wlp2s0"]);
+        assert_eq!(used(&classify_addrs([net("enp3s0", "10.0.0.5")])), ["enp3s0"]);
+        assert_eq!(used(&classify_addrs([net("wlan0", "10.42.0.1")])), ["wlan0"], "hotspot del PC (NetworkManager)");
+        assert_eq!(used(&classify_addrs([net("enp0s20f0u1", "192.168.42.129")])), ["enp0s20f0u1"], "USB tethering del telefono");
+        // Docker/Podman/bridge virtuali/tun/tap/Tailscale/WireGuard: esclusi
+        for n in ["docker0", "br-9f3a", "podman1", "virbr0", "veth1a", "cni-podman0", "tun0", "tap0", "tailscale0", "wg0", "nordlynx"] {
+            let r = classify_addrs([net(n, "172.17.0.1")]);
+            assert!(used(&r).is_empty(), "{n} non deve essere usata");
+            assert!(!r[0].motivo.is_empty());
+        }
+        // loopback e link-local non sono mai candidati
+        let r = classify_addrs([net("lo", "127.0.0.1"), net("wlp2s0", "169.254.3.4")]);
+        assert!(used(&r).is_empty());
+    }
+
+    #[test]
+    fn lan_plus_vpn_keeps_the_lan_working() {
+        let r = classify_addrs([net("lo", "127.0.0.1"), net("wlp2s0", "192.168.1.5"), net("tun0", "10.8.0.2"), net("tailscale0", "100.64.0.9"), net("wg0", "10.66.0.2"), net("docker0", "172.17.0.1")]);
+        assert_eq!(used(&r), ["wlp2s0"], "la VPN attiva non spegne la LAN e non entra nella scoperta");
+        let rep = interfaces_report(&r);
+        assert!(rep[0].contains("wlp2s0 192.168.1.5") && !rep[0].contains("tun0"), "{rep:?}");
+        assert!(rep[1].contains("tun0 10.8.0.2") && rep[1].contains("tunnel VPN") && rep[1].contains("docker0") && rep[1].contains("virtuale"), "{rep:?}");
+        assert!(!rep[1].contains("127.0.0.1"));
+        // solo VPN: nessuna interfaccia di scoperta, ma lo si dice (l'IP a mano resta possibile)
+        let rep = interfaces_report(&classify_addrs([net("wg0", "10.66.0.2")]));
+        assert!(rep[0].ends_with("nessuna"));
+    }
+
+    #[test]
+    fn explicit_addresses_are_not_filtered_by_interface_policy() {
+        // la politica riguarda solo l'elenco delle interfacce di scoperta: un IP digitato (anche dietro un tunnel) si prova sempre.
+        // `scan(Some(ip))` accetta qualunque IPv4 e `connect_any` non consulta mai `local_nets()` (provato in tests/e2e.rs con 127.0.0.1,
+        // che non è una rete locale per la politica).
+        let r = classify_addrs([net("tun0", "10.8.0.2")]);
+        assert!(used(&r).is_empty());
+        assert!(!in_local_subnet("10.8.0.9", &[]), "in_local_subnet serve solo a far decadere la presenza, non a vietare connessioni");
+    }
+
+    #[test]
+    fn membership_plan_follows_interface_changes() {
+        let set = |v: &[&str]| v.iter().map(|s| s.parse::<Ipv4Addr>().unwrap()).collect::<BTreeSet<_>>();
+        let (wifi, eth, vpn) = ("192.168.1.5", "10.0.0.5", "10.8.0.2");
+        // avvio
+        assert_eq!(plan_membership(&set(&[]), &set(&[wifi]), false), (vec![], vec![wifi.parse().unwrap()]));
+        // compare la VPN: non è nei desiderata, nessun cambiamento
+        assert_eq!(plan_membership(&set(&[wifi]), &set(&[wifi]), false), (vec![], vec![]));
+        // cambio rete: Wi-Fi sparisce, Ethernet arriva → si lascia la vecchia e si prende la nuova
+        assert_eq!(plan_membership(&set(&[wifi]), &set(&[eth]), false), (vec![wifi.parse().unwrap()], vec![eth.parse().unwrap()]));
+        // rimozione di tutte le interfacce
+        assert_eq!(plan_membership(&set(&[wifi, eth]), &set(&[]), false), (vec![eth.parse().unwrap(), wifi.parse().unwrap()], vec![]));
+        // dopo sospensione/cambio: tutto lasciato e ripreso, anche se l'indirizzo è lo stesso
+        assert_eq!(plan_membership(&set(&[wifi]), &set(&[wifi]), true), (vec![wifi.parse().unwrap()], vec![wifi.parse().unwrap()]));
+        // mai 0.0.0.0 e mai una VPN: il pianificatore prende solo ciò che gli si chiede
+        assert!(!plan_membership(&set(&[]), &set(&[wifi]), true).1.contains(&vpn.parse().unwrap()));
+        assert!(!plan_membership(&set(&[]), &set(&[wifi]), true).1.contains(&Ipv4Addr::UNSPECIFIED));
     }
 
     #[test]
@@ -343,6 +468,11 @@ mod tests {
                  docker0\t00000000\t010011AC\t0003\t0\t0\t0\t00000000\t0\t0\t0\n\
                  wlp2s0\t0000A8C0\t00000000\t0001\t0\t0\t600\t00FFFFFF\t0\t0\t0\n";
         assert_eq!(parse_gateways(t), ["192.168.0.2", "192.168.0.1"], "Ethernet (metrico 100) prima del Wi-Fi (600); niente VPN né Docker");
+        let vpn = "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n\
+                   wg0\t00000000\t0100000A\t0003\t0\t0\t0\t00000000\t0\t0\t0\n\
+                   tailscale0\t00000000\t0100000A\t0003\t0\t0\t1\t00000000\t0\t0\t0\n";
+        assert_eq!(vpn.lines().skip(1).map(|l| l.split_whitespace().count()).collect::<Vec<_>>(), [11, 11], "righe ben formate: solo il nome dell'interfaccia le fa scartare");
+        assert!(parse_gateways(vpn).is_empty(), "WireGuard e Tailscale non sono gateway di un telefono");
         assert!(parse_gateways("").is_empty());
         assert!(parse_gateways("Iface\tDestination\nbroken line").is_empty());
     }

@@ -370,8 +370,9 @@ impl Engine {
             1 => "D-Bus (NetworkManager, logind) in ascolto, più controllo periodico ogni 5 s",
             2 => "D-Bus non disponibile: solo controllo periodico delle interfacce ogni 5 s e rilevamento della ripresa dalla sospensione",
             _ => "in avvio" }));
-        let nets = crate::discovery::local_nets();
-        if !nets.is_empty() { l.push(format!("Interfacce: {}", nets.iter().map(|n| format!("{} {}", n.name, n.ip)).collect::<Vec<_>>().join(", "))); }
+        l.extend(crate::discovery::interfaces_report(&crate::discovery::interfaces()));
+        let m = self.discovery.membership();
+        l.push(format!("Ascolto multicast su: {}", if m.is_empty() { "nessuna interfaccia".to_string() } else { m.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(", ") }));
         let (vicini, ricordati) = {
             let v = self.sh.registry.snapshot();
             let a = v.as_array().cloned().unwrap_or_default();
