@@ -18,6 +18,12 @@ pub struct Limits {
     pub pin_failures: usize,
     pub pin_window: std::time::Duration,
     pub disk_margin: u64,
+    /// Scadenza complessiva per leggere il corpo JSON di `register` e `prepare-upload` (non vale per `upload`).
+    pub json_body_timeout: std::time::Duration,
+    /// Scadenza per ricevere gli header HTTP di una richiesta.
+    pub header_timeout: std::time::Duration,
+    /// Scadenza dell'handshake TLS.
+    pub tls_timeout: std::time::Duration,
 }
 
 impl Default for Limits {
@@ -27,6 +33,7 @@ impl Default for Limits {
             max_json_body: 8 * 1024 * 1024, max_files: 5000, max_file_size: 1 << 50, max_total_size: 1 << 50,
             max_preview: 64 * 1024, max_pending: 5, decision_timeout: D::from_secs(120),
             session_idle: D::from_secs(120), max_connections: 32, pin_failures: 10, pin_window: D::from_secs(300), disk_margin: 64 * 1024 * 1024,
+            json_body_timeout: D::from_secs(30), header_timeout: D::from_secs(30), tls_timeout: D::from_secs(10),
         }
     }
 }

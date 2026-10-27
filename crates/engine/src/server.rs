@@ -58,16 +58,17 @@ pub async fn start(shared: Arc<Shared>, receiver: Arc<Receiver>, port: u16) -> s
             };
             let Ok(permit) = slots.clone().try_acquire_owned() else { continue };   // troppe connessioni: scartata
             let (acceptor, shared, receiver, c3) = (acceptor.clone(), shared.clone(), receiver.clone(), c2.clone());
+            let (tls_timeout, header_timeout) = (receiver.limits.tls_timeout, receiver.limits.header_timeout);
             tokio::spawn(async move {
-                let _permit = permit;
+                let _permit = permit;      // rilasciato a ogni uscita: errore, scadenza o chiusura
                 let _ = sock.set_nodelay(true);
-                let Ok(Ok(tls)) = tokio::time::timeout(Duration::from_secs(10), acceptor.accept(sock)).await else { return };
+                let Ok(Ok(tls)) = tokio::time::timeout(tls_timeout, acceptor.accept(sock)).await else { return };
                 let ip = peer.ip();
                 let svc = hyper::service::service_fn(move |req| {
                     let (shared, receiver) = (shared.clone(), receiver.clone());
                     async move { handle(shared, receiver, ip, req).await }
                 });
-                let conn = http1::Builder::new().timer(TokioTimer::new()).header_read_timeout(Duration::from_secs(30))
+                let conn = http1::Builder::new().timer(TokioTimer::new()).header_read_timeout(header_timeout)
                     .serve_connection(TokioIo::new(tls), svc);
                 tokio::pin!(conn);
                 tokio::select! { _ = &mut conn => {}, _ = c3.cancelled() => {} }
@@ -77,12 +78,21 @@ pub async fn start(shared: Arc<Shared>, receiver: Arc<Receiver>, port: u16) -> s
     Ok(ServerHandle { cancel, task })
 }
 
-async fn json_body(req: Request<Incoming>, limit: usize) -> Result<Value, ProtocolError> {
+/// Legge il corpo JSON con limite di dimensione **e** scadenza complessiva: un client che invia
+/// lentamente (o smette di inviare) non può trattenere lo slot della connessione. Vale solo per i
+/// messaggi JSON; `upload` ha una politica di inattività propria (vedi `Receiver::upload`).
+async fn json_body(req: Request<Incoming>, limit: usize, deadline: Duration) -> Result<Value, ProtocolError> {
     if let Some(l) = req.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<usize>().ok()) {
         if l == 0 { return Err(ProtocolError::new(400, "corpo vuoto")); }
         if l > limit { return Err(ProtocolError::new(413, "corpo troppo grande")); }
     }
-    let bytes = Limited::new(req.into_body(), limit).collect().await.map_err(|_| ProtocolError::new(413, "corpo non valido"))?.to_bytes();
+    let read = Limited::new(req.into_body(), limit).collect();
+    let bytes = match tokio::time::timeout(deadline, read).await {
+        Err(_) => return Err(ProtocolError::new(408, "corpo non completato in tempo")),
+        Ok(Ok(c)) => c.to_bytes(),
+        Ok(Err(e)) if e.downcast_ref::<http_body_util::LengthLimitError>().is_some() => return Err(ProtocolError::new(413, "corpo troppo grande")),
+        Ok(Err(_)) => return Err(ProtocolError::new(400, "corpo interrotto")),
+    };
     serde_json::from_slice(&bytes).map_err(|_| ProtocolError::new(400, "JSON non valido"))
 }
 
@@ -91,12 +101,12 @@ async fn handle(shared: Arc<Shared>, rx: Arc<Receiver>, ip: IpAddr, req: Request
     let q: HashMap<String, String> = req.uri().query().map(|q| url_pairs(q)).unwrap_or_default();
     match (req.method().clone(), path.as_str()) {
         (Method::GET, p) if p == format!("{API}/info") => Ok(reply(200, Some(shared.info(false)))),
-        (Method::POST, p) if p == format!("{API}/register") => match json_body(req, 64 * 1024).await {
+        (Method::POST, p) if p == format!("{API}/register") => match json_body(req, 64 * 1024, rx.limits.json_body_timeout).await {
             Ok(b) => { shared.on_register(&b, ip); Ok(reply(200, Some(shared.info(false)))) }
             Err(e) => Ok(err(e)),
         },
         (Method::POST, p) if p == format!("{API}/prepare-upload") => {
-            let body = match json_body(req, rx.limits.max_json_body).await { Ok(b) => b, Err(e) => return Ok(err(e)) };
+            let body = match json_body(req, rx.limits.max_json_body, rx.limits.json_body_timeout).await { Ok(b) => b, Err(e) => return Ok(err(e)) };
             match rx.prepare(ip, q.get("pin").cloned(), body).await {
                 Ok((st, obj)) => Ok(reply(st, obj)),
                 Err(e) => Ok(err(e)),

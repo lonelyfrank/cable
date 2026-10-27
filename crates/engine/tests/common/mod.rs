@@ -27,8 +27,10 @@ impl Rig {
     pub fn new() -> Rig { Rig { dir: tempfile::tempdir().unwrap(), engines: vec![] } }
     pub fn path(&self, n: &str) -> PathBuf { self.dir.path().join(n) }
 
-    pub async fn engine(&mut self, name: &str) -> Arc<Engine> {
-        let e = Engine::new(Paths::under(&self.path(name)), free_port(), false);
+    pub async fn engine(&mut self, name: &str) -> Arc<Engine> { self.engine_with_limits(name, Default::default()).await }
+
+    pub async fn engine_with_limits(&mut self, name: &str, limits: pixelhub_engine::protocol::Limits) -> Arc<Engine> {
+        let e = Engine::with_limits(Paths::under(&self.path(name)), free_port(), false, limits);
         e.sh.settings.aggiorna(serde_json::json!({"nome_pc": name}).as_object().unwrap());
         assert!(e.start().await, "server non avviato");
         self.engines.push(e.clone());
