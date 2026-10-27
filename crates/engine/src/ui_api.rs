@@ -20,18 +20,34 @@ pub fn consentito(e: &Engine, p: &str) -> Option<PathBuf> {
     ["cartella", "cartella_foto"].iter().filter_map(|k| std::fs::canonicalize(e.sh.settings.str(k)).ok()).find(|r| p.starts_with(r)).map(|_| p)
 }
 
-fn ok(b: bool) -> Value { json!({"ok": b}) }
-fn s<'a>(a: &'a Value, k: &str) -> &'a str { a[k].as_str().unwrap_or("") }
+fn ok(b: bool) -> Value {
+    json!({"ok": b})
+}
+fn s<'a>(a: &'a Value, k: &str) -> &'a str {
+    a[k].as_str().unwrap_or("")
+}
 
 pub async fn chiama(e: &Arc<Engine>, host: &dyn Host, metodo: &str, a: Value) -> Value {
     let a = if a.is_null() { json!({}) } else { a };
-    if !a.is_object() { return json!({"ok": false, "errore": "Chiamata non valida"}); }
+    if !a.is_object() {
+        return json!({"ok": false, "errore": "Chiamata non valida"});
+    }
     match metodo {
-        "stato" => { let e = e.clone(); tokio::task::spawn_blocking(move || e.snapshot()).await.unwrap_or(ok(false)) }
-        "diagnostica" => { let e = e.clone(); json!({"ok": true, "testo": tokio::task::spawn_blocking(move || e.diagnostica()).await.unwrap_or_default()}) }
+        "stato" => {
+            let e = e.clone();
+            tokio::task::spawn_blocking(move || e.snapshot()).await.unwrap_or(ok(false))
+        }
+        "diagnostica" => {
+            let e = e.clone();
+            json!({"ok": true, "testo": tokio::task::spawn_blocking(move || e.diagnostica()).await.unwrap_or_default()})
+        }
         "cerca" => {
             let ip = a["ip"].as_str().filter(|i| !i.is_empty());
-            if let Some(i) = ip { if i.parse::<std::net::Ipv4Addr>().is_err() { return json!({"ok": false, "errore": "Indirizzo IP non valido"}); } }
+            if let Some(i) = ip {
+                if i.parse::<std::net::Ipv4Addr>().is_err() {
+                    return json!({"ok": false, "errore": "Indirizzo IP non valido"});
+                }
+            }
             json!({"ok": true, "trovati": e.cerca(ip, None).await})
         }
         "aggiorna" => json!({"ok": true, "risposto": e.aggiorna().await}),
@@ -53,14 +69,24 @@ pub async fn chiama(e: &Arc<Engine>, host: &dyn Host, metodo: &str, a: Value) ->
         "preferito" => ok(e.preferito(s(&a, "fp"), a["on"].as_bool().unwrap_or(false))),
         "dimentica" => ok(e.dimentica(s(&a, "fp"))),
         "decidi" => {
-            let ids = match &a["ids"] { Value::Null => None, Value::Array(v) => Some(v.iter().filter_map(|x| x.as_str().map(String::from)).collect()), _ => return ok(false) };
+            let ids = match &a["ids"] {
+                Value::Null => None,
+                Value::Array(v) => Some(v.iter().filter_map(|x| x.as_str().map(String::from)).collect()),
+                _ => return ok(false),
+            };
             let r = e.decidi(s(&a, "id"), ids);
             host.ritira_notifica(s(&a, "id"));
             ok(r)
         }
         "annulla_ricezione" => ok(e.receiver.annulla(s(&a, "id"))),
-        "msg_rimuovi" => { e.receiver.rimuovi_messaggio(s(&a, "id")); ok(true) }
-        "conf" => { let m: Map<String, Value> = a.as_object().cloned().unwrap_or_default(); json!({"ok": true, "aggiornati": e.aggiorna_impostazioni(&m)}) }
+        "msg_rimuovi" => {
+            e.receiver.rimuovi_messaggio(s(&a, "id"));
+            ok(true)
+        }
+        "conf" => {
+            let m: Map<String, Value> = a.as_object().cloned().unwrap_or_default();
+            json!({"ok": true, "aggiornati": e.aggiorna_impostazioni(&m)})
+        }
         "pin" => {
             let r = e.imposta_pin(a["pin"].as_str());
             json!({"ok": r, "errore": if r { "" } else { "Il PIN deve avere da 4 a 32 caratteri" }})
@@ -76,27 +102,52 @@ pub async fn chiama(e: &Arc<Engine>, host: &dyn Host, metodo: &str, a: Value) ->
             let _ = std::fs::create_dir_all(&p);
             ok(desktop::apri(&p))
         }
-        "scegli_file" => { let p = host.scegli_file(); json!({"ok": !p.is_empty(), "percorsi": p}) }
+        "scegli_file" => {
+            let p = host.scegli_file();
+            json!({"ok": !p.is_empty(), "percorsi": p})
+        }
         "scegli_cartella" => {
             let k = if s(&a, "quale") == "foto" { "cartella_foto" } else { "cartella" };
             match host.scegli_cartella(&e.sh.settings.str(k)) {
-                Some(p) => { e.aggiorna_impostazioni(json!({k: p}).as_object().unwrap()); ok(true) }
+                Some(p) => {
+                    e.aggiorna_impostazioni(json!({k: p}).as_object().unwrap());
+                    ok(true)
+                }
                 None => ok(false),
             }
         }
         // ---- Android opzionale
-        "schermo" => if s(&a, "azione") == "avvia" { ok(e.android.avvia_schermo().await) } else { e.android.ferma_schermo(); ok(true) },
+        "schermo" => {
+            if s(&a, "azione") == "avvia" {
+                ok(e.android.avvia_schermo().await)
+            } else {
+                e.android.ferma_schermo();
+                ok(true)
+            }
+        }
         "android_importa" => ok(e.android.importa()),
         "android_apri" => ok(e.android.apri_file_manager()),
         "android_riprova" => ok(e.android.riprova().await),
         // ---- wizard di primo collegamento
-        "wizard_verifica_inizia" => match e.verifica_inizia(s(&a, "fp")) { Ok(()) => ok(true), Err(er) => json!({"ok": false, "errore": er}) },
+        "wizard_verifica_inizia" => match e.verifica_inizia(s(&a, "fp")) {
+            Ok(()) => ok(true),
+            Err(er) => json!({"ok": false, "errore": er}),
+        },
         "wizard_verifica_conferma" => e.verifica_conferma(s(&a, "code")),
         "wizard_prova" => ok(e.wizard_prova(s(&a, "fp"))),
-        "wizard_completa" => { e.wizard_completa(); ok(true) }
+        "wizard_completa" => {
+            e.wizard_completa();
+            ok(true)
+        }
         // ---- applicazione
-        "esci" => { host.esci(); ok(true) }
-        "js_error" => { crate::dlog!("JS {} {}", s(&a, "m"), a["l"]); ok(true) }
+        "esci" => {
+            host.esci();
+            ok(true)
+        }
+        "js_error" => {
+            crate::dlog!("JS {} {}", s(&a, "m"), a["l"]);
+            ok(true)
+        }
         _ => json!({"ok": false, "errore": "Chiamata sconosciuta"}),
     }
 }
@@ -115,8 +166,12 @@ mod tests {
 
     struct H;
     impl Host for H {
-        fn scegli_file(&self) -> Vec<String> { vec!["/x".into()] }
-        fn scegli_cartella(&self, _: &str) -> Option<String> { None }
+        fn scegli_file(&self) -> Vec<String> {
+            vec!["/x".into()]
+        }
+        fn scegli_cartella(&self, _: &str) -> Option<String> {
+            None
+        }
         fn esci(&self) {}
     }
 

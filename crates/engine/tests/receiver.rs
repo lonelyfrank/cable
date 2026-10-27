@@ -14,9 +14,16 @@ use std::sync::Arc;
 use std::time::Duration;
 
 const IP: &str = "10.0.0.5";
-fn ip(s: &str) -> IpAddr { s.parse().unwrap() }
+fn ip(s: &str) -> IpAddr {
+    s.parse().unwrap()
+}
 
-struct Env { _t: tempfile::TempDir, rx: Arc<Receiver>, settings: Arc<Settings>, inbox: PathBuf }
+struct Env {
+    _t: tempfile::TempDir,
+    rx: Arc<Receiver>,
+    settings: Arc<Settings>,
+    inbox: PathBuf,
+}
 
 fn env_with(limits: Limits) -> Env {
     let t = tempfile::tempdir().unwrap();
@@ -36,7 +43,9 @@ fn body(files: &Files) -> Value {
     let mut m = serde_json::Map::new();
     for (id, name, data, sha) in files {
         let mut f = json!({"id": id, "fileName": name, "size": data.len(), "fileType": "application/octet-stream"});
-        if *sha { f["sha256"] = json!(hex::encode(Sha256::digest(data))); }
+        if *sha {
+            f["sha256"] = json!(hex::encode(Sha256::digest(data)));
+        }
         m.insert(id.to_string(), f);
     }
     json!({"info": {"alias": "Mittente", "fingerprint": "C".repeat(64)}, "files": m})
@@ -45,7 +54,9 @@ fn body(files: &Files) -> Value {
 async fn first_pending(rx: &Receiver) -> String {
     for _ in 0..500 {
         let (r, _) = rx.snapshot();
-        if let Some(i) = r.as_array().unwrap().iter().find(|i| i["stato"] == "attesa") { return i["id"].as_str().unwrap().to_string(); }
+        if let Some(i) = r.as_array().unwrap().iter().find(|i| i["stato"] == "attesa") {
+            return i["id"].as_str().unwrap().to_string();
+        }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     panic!("nessuna richiesta in attesa");
@@ -61,8 +72,7 @@ async fn session(e: &Env, files: Files<'_>, accept: Option<Vec<String>>) -> (Str
     let (st, resp) = h.await.unwrap().unwrap();
     assert_eq!(st, 200);
     let r = resp.unwrap();
-    (r["sessionId"].as_str().unwrap().to_string(),
-     r["files"].as_object().unwrap().iter().map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string())).collect())
+    (r["sessionId"].as_str().unwrap().to_string(), r["files"].as_object().unwrap().iter().map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string())).collect())
 }
 
 fn q(sid: &str, fid: &str, tok: &str) -> HashMap<String, String> {
@@ -73,9 +83,15 @@ fn chunks(data: &[u8]) -> St {
     stream::iter(data.chunks(4).map(|c| Ok(Bytes::copy_from_slice(c))).collect::<Vec<_>>())
 }
 fn status(r: Result<PathBuf, RxError>) -> u16 {
-    match r { Err(RxError::Proto(p)) => p.status, Err(RxError::Stream) => 0, Ok(_) => 200 }
+    match r {
+        Err(RxError::Proto(p)) => p.status,
+        Err(RxError::Stream) => 0,
+        Ok(_) => 200,
+    }
 }
-fn state(e: &Env) -> Value { e.rx.snapshot().0[0].clone() }
+fn state(e: &Env) -> Value {
+    e.rx.snapshot().0[0].clone()
+}
 fn listing(p: &PathBuf) -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(p).map(|r| r.map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
     v.sort();
@@ -145,12 +161,14 @@ async fn duplicate_after_completion_409_and_session_stays_open() {
     let (sid, tok) = session(&e, vec![("a", "a", b"x", false), ("b", "b", b"y", false)], None).await;
     e.rx.upload(ip(IP), &q(&sid, "a", &tok["a"]), Some(1), chunks(b"x")).await.unwrap();
     assert_eq!(status(e.rx.upload(ip(IP), &q(&sid, "a", &tok["a"]), Some(1), chunks(b"x")).await), 409);
-    assert_eq!(state(&e)["stato"], "ricezione");        // b manca: non è completata
+    assert_eq!(state(&e)["stato"], "ricezione"); // b manca: non è completata
 }
 
 fn slow(data: Vec<u8>, ms: u64) -> impl futures_util::Stream<Item = Result<Bytes, StreamError>> + Unpin {
     Box::pin(stream::unfold((data, 0usize), move |(d, i)| async move {
-        if i >= d.len() { return None; }
+        if i >= d.len() {
+            return None;
+        }
         tokio::time::sleep(Duration::from_millis(ms)).await;
         let end = (i + 4).min(d.len());
         let c = Bytes::copy_from_slice(&d[i..end]);
@@ -167,7 +185,9 @@ async fn concurrent_same_file_only_one_wins() {
     let (s2, t2, d2) = (sid.clone(), tok["a"].clone(), data.clone());
     let first = tokio::spawn(async move { rx.upload(ip(IP), &q(&s2, "a", &t2), Some(400), slow(d2, 5)).await });
     for _ in 0..200 {
-        if state(&e)["file"][0]["stato"] == "ricezione" { break; }
+        if state(&e)["file"][0]["stato"] == "ricezione" {
+            break;
+        }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     assert_eq!(status(e.rx.upload(ip(IP), &q(&sid, "a", &tok["a"]), Some(400), chunks(&data)).await), 409);
@@ -209,7 +229,9 @@ async fn dropped_upload_future_cleans_temp_and_resets_state() {
     let (s2, t2) = (sid.clone(), tok["a"].clone());
     let h = tokio::spawn(async move { rx.upload(ip(IP), &q(&s2, "a", &t2), Some(4000), slow(vec![1u8; 4000], 5)).await });
     for _ in 0..200 {
-        if state(&e)["byte"].as_u64().unwrap() > 0 { break; }
+        if state(&e)["byte"].as_u64().unwrap() > 0 {
+            break;
+        }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     assert!(listing(&e.inbox).iter().any(|n| n.starts_with(".cable-")));
@@ -217,7 +239,8 @@ async fn dropped_upload_future_cleans_temp_and_resets_state() {
     let _ = h.await;
     assert!(listing(&e.inbox).is_empty());
     assert_eq!(state(&e)["file"][0]["stato"], "attesa");
-    e.rx.upload(ip(IP), &q(&sid, "a", &tok["a"]), Some(4000), chunks(&data)).await.unwrap();   // il ritentativo funziona
+    e.rx.upload(ip(IP), &q(&sid, "a", &tok["a"]), Some(4000), chunks(&data)).await.unwrap();
+    // il ritentativo funziona
 }
 
 #[tokio::test]
@@ -229,7 +252,9 @@ async fn cancel_by_sender_and_locally_stop_inflight_io() {
     let (s2, t2) = (sid.clone(), tok["a"].clone());
     let h = tokio::spawn(async move { rx.upload(ip(IP), &q(&s2, "a", &t2), Some(4000), slow(vec![1u8; 4000], 5)).await });
     for _ in 0..200 {
-        if state(&e)["byte"].as_u64().unwrap() > 0 { break; }
+        if state(&e)["byte"].as_u64().unwrap() > 0 {
+            break;
+        }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     assert!(e.rx.cancel_from_sender(ip("10.9.9.9"), &sid).is_err());
@@ -271,7 +296,9 @@ async fn partial_accept_reject_timeout_and_peer_gone() {
     let (sid, tok) = session(&e, vec![("a", "a", b"1", false), ("b", "b", b"2", false), ("c", "c", b"3", false)], Some(vec!["a".into(), "c".into()])).await;
     assert_eq!(tok.keys().cloned().collect::<std::collections::BTreeSet<_>>(), ["a".to_string(), "c".to_string()].into());
     assert_eq!(status(e.rx.upload(ip(IP), &q(&sid, "b", &"x".repeat(32)), Some(1), chunks(b"2")).await), 403);
-    for (k, d) in [("a", b"1"), ("c", b"3")] { e.rx.upload(ip(IP), &q(&sid, k, &tok[k]), Some(1), chunks(d)).await.unwrap(); }
+    for (k, d) in [("a", b"1"), ("c", b"3")] {
+        e.rx.upload(ip(IP), &q(&sid, k, &tok[k]), Some(1), chunks(d)).await.unwrap();
+    }
     assert_eq!(state(&e)["stato"], "completata");
     assert_eq!(listing(&e.inbox), ["a", "c"]);
     // rifiuto
@@ -308,15 +335,23 @@ async fn busy_pending_limit_and_invalid_body() {
     for i in 0..2 {
         let rx = e.rx.clone();
         let b = body(&vec![("a", "a", b"1", false)]);
-        hs.push(tokio::spawn(async move { let _ = rx.prepare(ip(&format!("10.0.1.{i}")), None, b).await; }));
+        hs.push(tokio::spawn(async move {
+            let _ = rx.prepare(ip(&format!("10.0.1.{i}")), None, b).await;
+        }));
     }
     for _ in 0..300 {
-        if e.rx.snapshot().0.as_array().unwrap().iter().filter(|i| i["stato"] == "attesa").count() == 2 { break; }
+        if e.rx.snapshot().0.as_array().unwrap().iter().filter(|i| i["stato"] == "attesa").count() == 2 {
+            break;
+        }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     assert_eq!(e.rx.prepare(ip("10.0.1.99"), None, body(&vec![("z", "z", b"1", false)])).await.unwrap_err().status, 429);
-    for i in e.rx.snapshot().0.as_array().unwrap() { e.rx.decide(i["id"].as_str().unwrap(), Some(vec![])); }
-    for h in hs { let _ = h.await; }
+    for i in e.rx.snapshot().0.as_array().unwrap() {
+        e.rx.decide(i["id"].as_str().unwrap(), Some(vec![]));
+    }
+    for h in hs {
+        let _ = h.await;
+    }
     for b in [Value::Null, json!({"info": {}, "files": {}}), json!({"files": {"a": {}}, "info": {}})] {
         assert_eq!(e.rx.prepare(ip(IP), None, b).await.unwrap_err().status, 400);
     }
@@ -330,7 +365,7 @@ async fn text_message_needs_accept_and_returns_204() {
     let rx = e.rx.clone();
     let h = tokio::spawn(async move { rx.prepare(ip(IP), None, b).await });
     let id = first_pending(&e.rx).await;
-    assert!(e.rx.snapshot().1.as_array().unwrap().is_empty());     // nulla consegnato prima dell'ok
+    assert!(e.rx.snapshot().1.as_array().unwrap().is_empty()); // nulla consegnato prima dell'ok
     e.rx.decide(&id, None);
     assert_eq!(h.await.unwrap().unwrap().0, 204);
     assert_eq!(e.rx.snapshot().1[0]["testo"], "ciao");
@@ -342,7 +377,9 @@ async fn pin_required_wrong_rate_limited_and_correct() {
     e.settings.imposta_pin(Some("123456"));
     let b = || body(&vec![("a", "a", b"1", false)]);
     assert_eq!(e.rx.prepare(ip(IP), None, b()).await.unwrap_err().status, 401);
-    for _ in 0..10 { assert_eq!(e.rx.prepare(ip(IP), Some("000000".into()), b()).await.unwrap_err().status, 401); }
+    for _ in 0..10 {
+        assert_eq!(e.rx.prepare(ip(IP), Some("000000".into()), b()).await.unwrap_err().status, 401);
+    }
     assert_eq!(e.rx.prepare(ip(IP), Some("123456".into()), b()).await.unwrap_err().status, 429);
     let e = env();
     e.settings.imposta_pin(Some("123456"));

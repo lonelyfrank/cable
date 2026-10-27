@@ -26,13 +26,21 @@ pub fn default_name() -> String {
         if libc::gethostname(buf.as_mut_ptr().cast(), buf.len() - 1) == 0 {
             let end = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
             String::from_utf8_lossy(&buf[..end]).split('.').next().unwrap_or("").to_string()
-        } else { String::new() }
+        } else {
+            String::new()
+        }
     };
     let host = clean_label(&host, 28, "");
-    if host.is_empty() || host == "localhost" { "Cable".into() } else { format!("Cable {host}") }
+    if host.is_empty() || host == "localhost" {
+        "Cable".into()
+    } else {
+        format!("Cable {host}")
+    }
 }
 
-pub fn is_fp(s: &str) -> bool { s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()) }
+pub fn is_fp(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
 
 pub fn hash_pin(pin: &str, salt: Option<String>, it: u32) -> Value {
     let salt = salt.unwrap_or_else(|| random_hex(16));
@@ -57,19 +65,24 @@ fn clean_favorites(v: &Value) -> Value {
     if let Some(o) = v.as_object() {
         for (fp, rec) in o {
             let fp = fp.to_uppercase();
-            if !is_fp(&fp) { continue; }
+            if !is_fp(&fp) {
+                continue;
+            }
             let Some(r) = rec.as_object() else { continue };
             let port = r.get("port").and_then(Value::as_u64).filter(|p| *p > 0 && *p < 65536).unwrap_or(53317);
             let alias = r.get("alias").and_then(Value::as_str).filter(|s| !s.is_empty()).unwrap_or("Dispositivo");
-            out.insert(fp, json!({
-                "alias": alias.chars().take(60).collect::<String>(),
-                "ip": r.get("ip").and_then(Value::as_str).unwrap_or("").chars().take(45).collect::<String>(),
-                "port": port,
-                "confermato": r.get("confermato").and_then(Value::as_bool).unwrap_or(false),
-                // i record di Pixel Hub non hanno il campo: erano tutti preferiti
-                "preferito": r.get("preferito").and_then(Value::as_bool).unwrap_or(true),
-                "visto": r.get("visto").and_then(Value::as_f64).filter(|v| *v >= 0.0).unwrap_or(0.0),
-            }));
+            out.insert(
+                fp,
+                json!({
+                    "alias": alias.chars().take(60).collect::<String>(),
+                    "ip": r.get("ip").and_then(Value::as_str).unwrap_or("").chars().take(45).collect::<String>(),
+                    "port": port,
+                    "confermato": r.get("confermato").and_then(Value::as_bool).unwrap_or(false),
+                    // i record di Pixel Hub non hanno il campo: erano tutti preferiti
+                    "preferito": r.get("preferito").and_then(Value::as_bool).unwrap_or(true),
+                    "visto": r.get("visto").and_then(Value::as_f64).filter(|v| *v >= 0.0).unwrap_or(0.0),
+                }),
+            );
         }
     }
     Value::Object(out)
@@ -84,7 +97,13 @@ pub fn validate(key: &str, v: &Value) -> Option<Value> {
         "tema" => v.as_str().filter(|s| ["auto", "chiaro", "scuro"].contains(s)).map(|s| json!(s)),
         "notifiche" | "schermo_intero" | "background" | "avvio_login" | "wizard_fatto" => v.as_bool().map(|b| json!(b)),
         "preferiti" => Some(clean_favorites(v)),
-        "pin_ricezione" => if v.is_null() || valid_pin_record(v) { Some(v.clone()) } else { None },
+        "pin_ricezione" => {
+            if v.is_null() || valid_pin_record(v) {
+                Some(v.clone())
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }
@@ -96,7 +115,9 @@ pub fn defaults(p: &Paths) -> Map<String, Value> {
         "cartella_foto": p.pictures.join("Cable").to_string_lossy(),
         "vetro": 45, "tema": "auto", "notifiche": true, "schermo_intero": false, "background": true,
         "avvio_login": false, "preferiti": {}, "pin_ricezione": null, "migrato_da": null, "wizard_fatto": false,
-    }) else { unreachable!() };
+    }) else {
+        unreachable!()
+    };
     m
 }
 
@@ -104,15 +125,21 @@ fn normalize(raw: &Value, p: &Paths) -> Map<String, Value> {
     let mut d = defaults(p);
     if let Some(o) = raw.as_object() {
         for (k, v) in o {
-            if let Some(nv) = validate(k, v) { d.insert(k.clone(), nv); }
+            if let Some(nv) = validate(k, v) {
+                d.insert(k.clone(), nv);
+            }
         }
-        if o.get("migrato_da").is_some_and(Value::is_object) { d.insert("migrato_da".into(), o["migrato_da"].clone()); }
+        if o.get("migrato_da").is_some_and(Value::is_object) {
+            d.insert("migrato_da".into(), o["migrato_da"].clone());
+        }
     }
     d
 }
 
 fn atomic_write(path: &Path, text: &str) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() { fs::create_dir_all(dir)?; }
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
     let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
     {
         let mut f = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp)?;
@@ -152,8 +179,11 @@ pub fn migrate_v3(legacy: &Path, p: &Paths) -> Result<Map<String, Value>, String
     for (fp, alias) in cand {
         let fp = fp.to_uppercase();
         if is_fp(&fp) {
-            fav.insert(fp, json!({"alias": alias.as_str().unwrap_or("Dispositivo").chars().take(60).collect::<String>(),
-                                   "ip": "", "port": 53317, "confermato": false, "preferito": true, "visto": 0.0}));
+            fav.insert(
+                fp,
+                json!({"alias": alias.as_str().unwrap_or("Dispositivo").chars().take(60).collect::<String>(),
+                                   "ip": "", "port": 53317, "confermato": false, "preferito": true, "visto": 0.0}),
+            );
         }
     }
     let n = fav.len();
@@ -161,9 +191,12 @@ pub fn migrate_v3(legacy: &Path, p: &Paths) -> Result<Map<String, Value>, String
     let pin = json!({"salt": pairing.get("pin_salt"), "hash": pairing.get("pin_hash"), "it": 100000});
     let keep = valid_pin_record(&pin);
     new.insert("pin_ricezione".into(), if keep { pin } else { Value::Null });
-    new.insert("wizard_fatto".into(), json!(!pairing.is_empty()));      // aveva già collegato un telefono
-    new.insert("migrato_da".into(), json!({"versione": 3, "quando": chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
-                                           "preferiti_importati": n, "pin_conservato": keep}));
+    new.insert("wizard_fatto".into(), json!(!pairing.is_empty())); // aveva già collegato un telefono
+    new.insert(
+        "migrato_da".into(),
+        json!({"versione": 3, "quando": chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+                                           "preferiti_importati": n, "pin_conservato": keep}),
+    );
     Ok(new)
 }
 
@@ -180,7 +213,9 @@ impl Settings {
         s
     }
 
-    fn warn(&self, m: String) { self.avvisi.lock().unwrap().push(m); }
+    fn warn(&self, m: String) {
+        self.avvisi.lock().unwrap().push(m);
+    }
 
     fn load_inner(&self) {
         let file = self.paths.settings_file();
@@ -205,8 +240,7 @@ impl Settings {
         }
         let legacy = self.paths.legacy_config();
         if legacy.exists() {
-            let res = backup_file(&legacy, &self.paths.backups(), "config-v3").map_err(|e| e.to_string())
-                .and_then(|_| migrate_v3(&legacy, &self.paths));
+            let res = backup_file(&legacy, &self.paths.backups(), "config-v3").map_err(|e| e.to_string()).and_then(|_| migrate_v3(&legacy, &self.paths));
             match res {
                 Ok(d) => {
                     *self.d.lock().unwrap() = d;
@@ -223,10 +257,18 @@ impl Settings {
         atomic_write(&self.paths.settings_file(), &text)
     }
 
-    pub fn get(&self, k: &str) -> Value { self.d.lock().unwrap().get(k).cloned().unwrap_or(Value::Null) }
-    pub fn str(&self, k: &str) -> String { self.get(k).as_str().unwrap_or("").to_string() }
-    pub fn bool(&self, k: &str) -> bool { self.get(k).as_bool().unwrap_or(false) }
-    pub fn snapshot(&self) -> Map<String, Value> { self.d.lock().unwrap().clone() }
+    pub fn get(&self, k: &str) -> Value {
+        self.d.lock().unwrap().get(k).cloned().unwrap_or(Value::Null)
+    }
+    pub fn str(&self, k: &str) -> String {
+        self.get(k).as_str().unwrap_or("").to_string()
+    }
+    pub fn bool(&self, k: &str) -> bool {
+        self.get(k).as_bool().unwrap_or(false)
+    }
+    pub fn snapshot(&self) -> Map<String, Value> {
+        self.d.lock().unwrap().clone()
+    }
 
     /// Applica solo chiavi note e valide; restituisce quelle effettivamente cambiate.
     pub fn aggiorna(&self, patch: &Map<String, Value>) -> Map<String, Value> {
@@ -234,11 +276,18 @@ impl Settings {
         {
             let mut d = self.d.lock().unwrap();
             for (k, v) in patch {
-                if k == "schema" || k == "migrato_da" { continue; }
-                if let Some(nv) = validate(k, v) { d.insert(k.clone(), nv.clone()); done.insert(k.clone(), nv); }
+                if k == "schema" || k == "migrato_da" {
+                    continue;
+                }
+                if let Some(nv) = validate(k, v) {
+                    d.insert(k.clone(), nv.clone());
+                    done.insert(k.clone(), nv);
+                }
             }
         }
-        if !done.is_empty() { let _ = self.save(); }
+        if !done.is_empty() {
+            let _ = self.save();
+        }
         done
     }
 
@@ -246,10 +295,14 @@ impl Settings {
     pub fn imposta_pin(&self, pin: Option<&str>) -> bool {
         match pin.filter(|p| !p.is_empty()) {
             Some(p) => {
-                if !(4..=32).contains(&p.chars().count()) { return false; }
+                if !(4..=32).contains(&p.chars().count()) {
+                    return false;
+                }
                 self.aggiorna(&[("pin_ricezione".to_string(), hash_pin(p, None, PIN_ITERATIONS))].into_iter().collect());
             }
-            None => { self.aggiorna(&[("pin_ricezione".to_string(), Value::Null)].into_iter().collect()); }
+            None => {
+                self.aggiorna(&[("pin_ricezione".to_string(), Value::Null)].into_iter().collect());
+            }
         }
         true
     }
@@ -258,20 +311,31 @@ impl Settings {
     /// chiede comunque conferma). Togliendola il dispositivo resta ricordato; per toglierlo davvero c'è `dimentica`.
     pub fn preferito(&self, fp: &str, on: bool, info: Option<(&str, &str, u16)>) -> bool {
         let fp = fp.to_uppercase();
-        if !is_fp(&fp) { return false; }
+        if !is_fp(&fp) {
+            return false;
+        }
         {
             let mut d = self.d.lock().unwrap();
             let fav = d.entry("preferiti").or_insert_with(|| json!({}));
             let fav = fav.as_object_mut().unwrap();
             let prev = fav.get(&fp).cloned();
-            if prev.is_none() && !on { return true; }
+            if prev.is_none() && !on {
+                return true;
+            }
             let prev = prev.unwrap_or(json!({}));
-            let (alias, ip, port) = info.map(|(a, i, p)| (a.to_string(), i.to_string(), p)).unwrap_or_else(|| (
-                prev["alias"].as_str().unwrap_or("Dispositivo").to_string(),
-                prev["ip"].as_str().unwrap_or("").to_string(), prev["port"].as_u64().unwrap_or(53317) as u16));
-            fav.insert(fp, json!({"alias": alias.chars().take(60).collect::<String>(), "ip": ip, "port": port,
+            let (alias, ip, port) = info.map(|(a, i, p)| (a.to_string(), i.to_string(), p)).unwrap_or_else(|| {
+                (
+                    prev["alias"].as_str().unwrap_or("Dispositivo").to_string(),
+                    prev["ip"].as_str().unwrap_or("").to_string(),
+                    prev["port"].as_u64().unwrap_or(53317) as u16,
+                )
+            });
+            fav.insert(
+                fp,
+                json!({"alias": alias.chars().take(60).collect::<String>(), "ip": ip, "port": port,
                                    "confermato": prev["confermato"].as_bool().unwrap_or(false), "preferito": on,
-                                   "visto": prev["visto"].as_f64().unwrap_or_else(now_secs)}));
+                                   "visto": prev["visto"].as_f64().unwrap_or_else(now_secs)}),
+            );
         }
         let _ = self.save();
         true
@@ -284,7 +348,9 @@ impl Settings {
             let mut d = self.d.lock().unwrap();
             d.get_mut("preferiti").and_then(Value::as_object_mut).is_some_and(|f| f.remove(&fp).is_some())
         };
-        if removed { let _ = self.save(); }
+        if removed {
+            let _ = self.save();
+        }
     }
 
     /// Ricorda un dispositivo con cui si è appena parlato (connessione con impronta verificata), senza stella.
@@ -292,7 +358,9 @@ impl Settings {
     /// Restituisce true se qualcosa è cambiato su disco.
     pub fn ricorda(&self, fp: &str, alias: &str, ip: &str, port: u16) -> bool {
         let fp = fp.to_uppercase();
-        if !is_fp(&fp) { return false; }
+        if !is_fp(&fp) {
+            return false;
+        }
         let now = now_secs();
         let changed = {
             let mut d = self.d.lock().unwrap();
@@ -300,18 +368,27 @@ impl Settings {
             let alias: String = alias.chars().take(60).collect();
             let rec = match fav.get(&fp) {
                 Some(prev) => {
-                    let unchanged = prev["alias"] == json!(alias) && prev["ip"] == json!(ip) && prev["port"] == json!(port)
+                    let unchanged = prev["alias"] == json!(alias)
+                        && prev["ip"] == json!(ip)
+                        && prev["port"] == json!(port)
                         && now - prev["visto"].as_f64().unwrap_or(0.0) < 3600.0;
-                    if unchanged { return false; }
+                    if unchanged {
+                        return false;
+                    }
                     json!({"alias": alias, "ip": ip, "port": port, "confermato": prev["confermato"], "preferito": prev["preferito"], "visto": now})
                 }
                 None => {
                     // massimo MAX_RICORDATI senza stella né conferma: si scarta il meno recente
-                    let mut loose: Vec<(String, f64)> = fav.iter().filter(|(_, r)| r["preferito"] != json!(true) && r["confermato"] != json!(true))
-                        .map(|(k, r)| (k.clone(), r["visto"].as_f64().unwrap_or(0.0))).collect();
+                    let mut loose: Vec<(String, f64)> = fav
+                        .iter()
+                        .filter(|(_, r)| r["preferito"] != json!(true) && r["confermato"] != json!(true))
+                        .map(|(k, r)| (k.clone(), r["visto"].as_f64().unwrap_or(0.0)))
+                        .collect();
                     if loose.len() >= MAX_RICORDATI {
                         loose.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-                        if let Some((k, _)) = loose.first() { fav.remove(k); }
+                        if let Some((k, _)) = loose.first() {
+                            fav.remove(k);
+                        }
                     }
                     json!({"alias": alias, "ip": ip, "port": port, "confermato": false, "preferito": false, "visto": now})
                 }
@@ -319,7 +396,9 @@ impl Settings {
             fav.insert(fp, rec);
             true
         };
-        if changed { let _ = self.save(); }
+        if changed {
+            let _ = self.save();
+        }
         changed
     }
 
@@ -327,13 +406,18 @@ impl Settings {
     /// nell'elenco, ma **non eredita la conferma**. Il vecchio record viene rimosso.
     pub fn sostituisci_ricordato(&self, old_fp: &str, new_fp: &str, alias: &str, ip: &str, port: u16) -> bool {
         let (old_fp, new_fp) = (old_fp.to_uppercase(), new_fp.to_uppercase());
-        if !is_fp(&old_fp) || !is_fp(&new_fp) || old_fp == new_fp { return false; }
+        if !is_fp(&old_fp) || !is_fp(&new_fp) || old_fp == new_fp {
+            return false;
+        }
         {
             let mut d = self.d.lock().unwrap();
             let fav = d.entry("preferiti").or_insert_with(|| json!({})).as_object_mut().unwrap();
             let Some(prev) = fav.remove(&old_fp) else { return false };
-            fav.insert(new_fp, json!({"alias": alias.chars().take(60).collect::<String>(), "ip": ip, "port": port,
-                "confermato": false, "preferito": prev["preferito"].as_bool().unwrap_or(false), "visto": now_secs()}));
+            fav.insert(
+                new_fp,
+                json!({"alias": alias.chars().take(60).collect::<String>(), "ip": ip, "port": port,
+                "confermato": false, "preferito": prev["preferito"].as_bool().unwrap_or(false), "visto": now_secs()}),
+            );
         }
         let _ = self.save();
         true
@@ -342,18 +426,25 @@ impl Settings {
     /// Segna un dispositivo come confermato con il codice del wizard (e lo rende preferito).
     pub fn conferma_dispositivo(&self, fp: &str, alias: &str, ip: &str, port: u16) {
         let fp = fp.to_uppercase();
-        if !is_fp(&fp) { return; }
+        if !is_fp(&fp) {
+            return;
+        }
         {
             let mut d = self.d.lock().unwrap();
             let fav = d.entry("preferiti").or_insert_with(|| json!({})).as_object_mut().unwrap();
             let prev = fav.get(&fp).cloned().unwrap_or(json!({}));
-            fav.insert(fp, json!({"alias": alias.chars().take(60).collect::<String>(), "ip": ip, "port": port, "confermato": true,
-                                   "preferito": prev["preferito"].as_bool().unwrap_or(true), "visto": now_secs()}));
+            fav.insert(
+                fp,
+                json!({"alias": alias.chars().take(60).collect::<String>(), "ip": ip, "port": port, "confermato": true,
+                                   "preferito": prev["preferito"].as_bool().unwrap_or(true), "visto": now_secs()}),
+            );
         }
         let _ = self.save();
     }
 
-    pub fn preferiti(&self) -> Map<String, Value> { self.get("preferiti").as_object().cloned().unwrap_or_default() }
+    pub fn preferiti(&self) -> Map<String, Value> {
+        self.get("preferiti").as_object().cloned().unwrap_or_default()
+    }
 
     /// Riporta tutto ai valori predefiniti dopo un backup. Non tocca file ricevuti né identità.
     pub fn ripristina(&self) -> Option<PathBuf> {
@@ -377,7 +468,9 @@ mod tests {
             "tema": "scuro", "vetro": 70, "auto_accetta": true,
             "fidati": {FP2.to_lowercase(): "Vecchio fidato", "non-valido": "x"},
             "pairing": {"fp": FP1, "alias": "Pixel di prova", "pin_salt": "s", "pin_hash": "h", "ready": true, "adb_serial": "XYZ"}});
-        for (k, v) in extra.as_object().unwrap() { d[k] = v.clone(); }
+        for (k, v) in extra.as_object().unwrap() {
+            d[k] = v.clone();
+        }
         fs::write(p.legacy_config(), d.to_string()).unwrap();
     }
 

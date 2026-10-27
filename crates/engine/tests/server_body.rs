@@ -34,9 +34,14 @@ async fn outcome(s: &mut TlsStream<TcpStream>, max: Duration) -> (Option<u16>, b
     let closed = tokio::time::timeout(max, async {
         let mut tmp = [0u8; 1024];
         loop {
-            match s.read(&mut tmp).await { Ok(0) | Err(_) => break, Ok(n) => buf.extend_from_slice(&tmp[..n]) }
+            match s.read(&mut tmp).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => buf.extend_from_slice(&tmp[..n]),
+            }
         }
-    }).await.is_ok();
+    })
+    .await
+    .is_ok();
     let status = std::str::from_utf8(&buf).ok().and_then(|t| t.split_whitespace().nth(1)).and_then(|c| c.parse().ok());
     (status, closed)
 }
@@ -54,7 +59,7 @@ async fn body_never_completed_gets_408_and_connection_closed() {
     let e = r.engine_with_limits("s", limits(8)).await;
     for path in ["register", "prepare-upload"] {
         let mut s = raw(&e).await;
-        s.write_all(&head(path, "Content-Length: 100\r\n")).await.unwrap();      // header completi, corpo assente
+        s.write_all(&head(path, "Content-Length: 100\r\n")).await.unwrap(); // header completi, corpo assente
         let t = Instant::now();
         let (st, closed) = outcome(&mut s, Duration::from_secs(5)).await;
         assert_eq!(st, Some(408), "{path}");
@@ -73,9 +78,23 @@ async fn slow_drip_body_is_cut_at_the_deadline() {
     wr.write_all(&head("register", "Content-Length: 200\r\n")).await.unwrap();
     let t = Instant::now();
     // un byte ogni 60 ms: ogni singolo intervallo è breve, il totale supera la scadenza
-    let drip = tokio::spawn(async move { while wr.write_all(b" ").await.is_ok() { tokio::time::sleep(Duration::from_millis(60)).await; } });
+    let drip = tokio::spawn(async move {
+        while wr.write_all(b" ").await.is_ok() {
+            tokio::time::sleep(Duration::from_millis(60)).await;
+        }
+    });
     let mut buf = Vec::new();
-    tokio::time::timeout(Duration::from_secs(5), async { let mut tmp = [0u8; 512]; loop { match rd.read(&mut tmp).await { Ok(0) | Err(_) => break, Ok(n) => buf.extend_from_slice(&tmp[..n]) } } }).await.expect("il server doveva chiudere");
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let mut tmp = [0u8; 512];
+        loop {
+            match rd.read(&mut tmp).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => buf.extend_from_slice(&tmp[..n]),
+            }
+        }
+    })
+    .await
+    .expect("il server doveva chiudere");
     assert!(String::from_utf8_lossy(&buf).starts_with("HTTP/1.1 408"), "{}", String::from_utf8_lossy(&buf));
     assert!(t.elapsed() >= DEADLINE && t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
     drip.abort();
@@ -92,7 +111,11 @@ async fn oversize_malformed_and_valid_bodies_are_told_apart() {
     // oltre il limite con trasferimento a blocchi (nessun Content-Length)
     let mut s = raw(&e).await;
     s.write_all(&head("prepare-upload", "Transfer-Encoding: chunked\r\n")).await.unwrap();
-    for _ in 0..3 { let _ = s.write_all(format!("{:x}\r\n", 2000).as_bytes()).await; let _ = s.write_all(&vec![b' '; 2000]).await; let _ = s.write_all(b"\r\n").await; }
+    for _ in 0..3 {
+        let _ = s.write_all(format!("{:x}\r\n", 2000).as_bytes()).await;
+        let _ = s.write_all(&vec![b' '; 2000]).await;
+        let _ = s.write_all(b"\r\n").await;
+    }
     assert_eq!(outcome(&mut s, Duration::from_secs(5)).await.0, Some(413));
     // JSON malformato (per entrambi gli endpoint) e corpo vuoto
     assert_eq!(one_shot(&e, "register", "", b"{non json").await.0, Some(400));
@@ -128,11 +151,16 @@ async fn stalled_connections_up_to_the_limit_do_not_block_the_server_afterwards(
         s.write_all(&head("register", &format!("Content-Length: {}\r\n", ok.len()))).await.map_err(|_| ())?;
         s.write_all(ok).await.map_err(|_| ())?;
         Ok::<_, ()>(outcome(&mut s, Duration::from_millis(200)).await)
-    }).await;
+    })
+    .await;
     assert!(!matches!(busy, Ok(Ok((Some(200), _)))), "con tutti gli slot occupati non doveva essere servita: {busy:?}");
     // ...ma ognuna delle incomplete riceve 408 e libera lo slot
-    for s in stalled.iter_mut() { assert_eq!(outcome(s, Duration::from_secs(5)).await, (Some(408), true)); }
+    for s in stalled.iter_mut() {
+        assert_eq!(outcome(s, Duration::from_secs(5)).await, (Some(408), true));
+    }
     // dopo la scadenza il server serve di nuovo richieste legittime, più volte
-    for _ in 0..N + 1 { assert_eq!(one_shot(&e, "register", "", ok).await.0, Some(200)); }
+    for _ in 0..N + 1 {
+        assert_eq!(one_shot(&e, "register", "", ok).await.0, Some(200));
+    }
     r.stop_all().await;
 }

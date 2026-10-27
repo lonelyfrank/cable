@@ -47,16 +47,36 @@ impl Paths {
         }
     }
 
-    pub fn legacy_config(&self) -> PathBuf { self.home.join(".config/pixel-hub-v3/config.json") }
-    pub fn legacy_cache(&self) -> PathBuf { self.home.join(".cache/pixel-hub-v3") }
-    pub fn settings_file(&self) -> PathBuf { self.config.join("settings.json") }
-    pub fn backups(&self) -> PathBuf { self.config.join("backups") }
-    pub fn identity_dir(&self) -> PathBuf { self.data.join("identity") }
-    pub fn autostart_file(&self) -> PathBuf { self.home.join(".config/autostart/it.frank.Cable.desktop") }
+    pub fn legacy_config(&self) -> PathBuf {
+        self.home.join(".config/pixel-hub-v3/config.json")
+    }
+    pub fn legacy_cache(&self) -> PathBuf {
+        self.home.join(".cache/pixel-hub-v3")
+    }
+    pub fn settings_file(&self) -> PathBuf {
+        self.config.join("settings.json")
+    }
+    pub fn backups(&self) -> PathBuf {
+        self.config.join("backups")
+    }
+    pub fn identity_dir(&self) -> PathBuf {
+        self.data.join("identity")
+    }
+    pub fn autostart_file(&self) -> PathBuf {
+        self.home.join(".config/autostart/it.frank.Cable.desktop")
+    }
     /// Avvio automatico creato da Pixel Hub 5.0
-    pub fn old_autostart_file(&self) -> PathBuf { self.home.join(".config/autostart/it.frank.PixelHub.desktop") }
-    pub fn old_settings_file(&self) -> PathBuf { self.old_config.join("settings.json") }
-    pub fn old_identity_dir(&self) -> PathBuf { self.old_data.join("identity") }
+    pub fn old_autostart_file(&self) -> PathBuf {
+        self.home.join(".config/autostart/it.frank.PixelHub.desktop")
+    }
+    pub fn old_settings_file(&self) -> PathBuf {
+        self.old_config.join("settings.json")
+    }
+    pub fn old_identity_dir(&self) -> PathBuf {
+        self.old_data.join("identity")
+    }
     /// Registro della migrazione da Pixel Hub (presenza = già eseguita almeno una volta)
-    pub fn migration_record(&self) -> PathBuf { self.config.join("migrazione-pixel-hub.json") }
+    pub fn migration_record(&self) -> PathBuf {
+        self.config.join("migrazione-pixel-hub.json")
+    }
 }

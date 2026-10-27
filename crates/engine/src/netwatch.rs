@@ -14,12 +14,10 @@ async fn watch(tx: UnboundedSender<NetEvent>, cancel: CancellationToken) -> zbus
     let conn = Connection::system().await?;
     crate::dlog!("eventi D-Bus: in ascolto su NetworkManager e logind");
     // logind: PrepareForSleep(false) = ripresa dalla sospensione
-    let sleep_rule = MatchRule::builder().msg_type(Type::Signal)
-        .interface("org.freedesktop.login1.Manager")?.member("PrepareForSleep")?.build();
+    let sleep_rule = MatchRule::builder().msg_type(Type::Signal).interface("org.freedesktop.login1.Manager")?.member("PrepareForSleep")?.build();
     // NetworkManager: qualunque segnale sotto il suo albero di oggetti (stato, connessioni attive, configurazioni IP).
     // Sono tanti e a raffica: chi li riceve li accorpa e confronta gli indirizzi prima di agire.
-    let nm_rule = MatchRule::builder().msg_type(Type::Signal)
-        .path_namespace("/org/freedesktop/NetworkManager")?.build();
+    let nm_rule = MatchRule::builder().msg_type(Type::Signal).path_namespace("/org/freedesktop/NetworkManager")?.build();
     let mut sleep = MessageStream::for_match_rule(sleep_rule, &conn, Some(8)).await?;
     let mut nm = MessageStream::for_match_rule(nm_rule, &conn, Some(64)).await?;
     loop {

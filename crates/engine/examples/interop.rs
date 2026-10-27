@@ -16,10 +16,16 @@ async fn main() {
     assert!(e.start().await);
     // accetta tutto, come farebbe un utente
     let e2 = e.clone();
-    tokio::spawn(async move { loop {
-        for r in e2.receiver.snapshot().0.as_array().unwrap() { if r["stato"] == "attesa" { e2.decidi(r["id"].as_str().unwrap(), None); } }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    } });
+    tokio::spawn(async move {
+        loop {
+            for r in e2.receiver.snapshot().0.as_array().unwrap() {
+                if r["stato"] == "attesa" {
+                    e2.decidi(r["id"].as_str().unwrap(), None);
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    });
     assert_eq!(e.cerca(Some("127.0.0.1"), Some(py_port)).await, 1, "il peer Python non risponde");
     let py = e.snapshot()["dispositivi"].as_array().unwrap().iter().find(|d| d["alias"] == "peer-python").cloned().expect("peer-python non trovato");
     let fp = py["fp"].as_str().unwrap().to_string();
@@ -32,7 +38,9 @@ async fn main() {
         let t0 = Instant::now();
         let st = loop {
             let j = e.sender.snapshot().as_array().unwrap().iter().find(|j| j["id"] == jid.as_str()).cloned().unwrap();
-            if ["completato", "parziale", "errore", "rifiutato", "annullato"].contains(&j["stato"].as_str().unwrap()) { break (j["stato"].clone(), j["errore"].clone()); }
+            if ["completato", "parziale", "errore", "rifiutato", "annullato"].contains(&j["stato"].as_str().unwrap()) {
+                break (j["stato"].clone(), j["errore"].clone());
+            }
             assert!(t0.elapsed() < Duration::from_secs(60));
             tokio::time::sleep(Duration::from_millis(50)).await;
         };
@@ -43,16 +51,23 @@ async fn main() {
     let inbox = std::path::PathBuf::from(e.sh.settings.str("cartella"));
     let t0 = Instant::now();
     loop {
-        let ok_file = std::fs::read_dir(&inbox).map(|r| r.flatten().any(|f| f.file_name() == "uscita.bin" && std::fs::read(f.path()).map(|b| hex::encode(Sha256::digest(&b)) == want).unwrap_or(false))).unwrap_or(false);
+        let ok_file = std::fs::read_dir(&inbox)
+            .map(|r| {
+                r.flatten().any(|f| f.file_name() == "uscita.bin" && std::fs::read(f.path()).map(|b| hex::encode(Sha256::digest(&b)) == want).unwrap_or(false))
+            })
+            .unwrap_or(false);
         let msgs = e.receiver.snapshot().1;
         if ok_file && !msgs.as_array().unwrap().is_empty() {
             println!("RS_RECEIVED_FILE_OK=true");
             println!("RS_RECEIVED_TEXT={}", msgs[0]["testo"]);
             break;
         }
-        if t0.elapsed() > Duration::from_secs(40) { println!("RS_RECEIVED_FILE_OK=false (timeout) msgs={msgs}"); break; }
+        if t0.elapsed() > Duration::from_secs(40) {
+            println!("RS_RECEIVED_FILE_OK=false (timeout) msgs={msgs}");
+            break;
+        }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    tokio::time::sleep(Duration::from_secs(4)).await;       // lascia a Python il tempo di verificare
+    tokio::time::sleep(Duration::from_secs(4)).await; // lascia a Python il tempo di verificare
     e.stop().await;
 }

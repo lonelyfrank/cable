@@ -22,14 +22,22 @@ use tokio_util::sync::CancellationToken;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 const CONF_KEYS: [&str; 9] = ["nome_pc", "cartella", "cartella_foto", "vetro", "tema", "notifiche", "schermo_intero", "background", "avvio_login"];
 
-struct Challenge { fp: String, alias: String, ip: String, port: u16, code: String, created: Instant, tries: u8 }
+struct Challenge {
+    fp: String,
+    alias: String,
+    ip: String,
+    port: u16,
+    code: String,
+    created: Instant,
+    tries: u8,
+}
 
 #[derive(Default)]
 struct Wizard {
     pending: Option<Challenge>,
     job: Option<String>,
     confermato_fp: Option<String>,
-    prova: Option<(String, f64)>,        // (ip del dispositivo, istante di inizio)
+    prova: Option<(String, f64)>, // (ip del dispositivo, istante di inizio)
 }
 
 pub struct Engine {
@@ -54,20 +62,34 @@ impl Engine {
         let sh = Shared::new(paths, port);
         let receiver = Receiver::new(sh.settings.clone(), sh.bus.clone(), limits, sh.notifier.clone());
         Arc::new(Engine {
-            receiver, sender: Sender::new(sh.clone()), discovery: Discovery::new(sh.clone(), multicast),
+            receiver,
+            sender: Sender::new(sh.clone()),
+            discovery: Discovery::new(sh.clone(), multicast),
             android: Android::new(sh.settings.clone(), sh.bus.clone()),
-            server: tokio::sync::Mutex::new(None), server_error: Mutex::new(String::new()), cancel: CancellationToken::new(),
-            cache: Mutex::new(HashMap::new()), wizard: Mutex::new(Wizard::default()), sh,
+            server: tokio::sync::Mutex::new(None),
+            server_error: Mutex::new(String::new()),
+            cancel: CancellationToken::new(),
+            cache: Mutex::new(HashMap::new()),
+            wizard: Mutex::new(Wizard::default()),
+            sh,
         })
     }
 
-    pub fn bus(&self) -> &Bus { &self.sh.bus }
-    pub fn notifier(&self) -> &Arc<Notifier> { &self.sh.notifier }
-    pub fn port(&self) -> u16 { self.sh.port() }
+    pub fn bus(&self) -> &Bus {
+        &self.sh.bus
+    }
+    pub fn notifier(&self) -> &Arc<Notifier> {
+        &self.sh.notifier
+    }
+    pub fn port(&self) -> u16 {
+        self.sh.port()
+    }
 
     // ------------------------------------------------------------------ ciclo di vita
     pub async fn start(self: &Arc<Self>) -> bool {
-        for k in ["cartella", "cartella_foto"] { let _ = std::fs::create_dir_all(self.sh.settings.str(k)); }
+        for k in ["cartella", "cartella_foto"] {
+            let _ = std::fs::create_dir_all(self.sh.settings.str(k));
+        }
         self.receiver.pulisci_residui();
         desktop::migra_avvio_automatico(&self.sh.paths);
         let ok = self.avvia_server().await;
@@ -82,8 +104,15 @@ impl Engine {
                 let t = tokio::select! { _ = me.cancel.cancelled() => return, t = rx.recv() => t };
                 match t {
                     Ok("rete") | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                        { let mut c = me.cache.lock().unwrap(); c.remove("rete_ip"); c.remove("rete_nome"); }
-                        if !me.server_attivo() { me.avvia_server().await; me.sh.bus.emit("server"); }
+                        {
+                            let mut c = me.cache.lock().unwrap();
+                            c.remove("rete_ip");
+                            c.remove("rete_nome");
+                        }
+                        if !me.server_attivo() {
+                            me.avvia_server().await;
+                            me.sh.bus.emit("server");
+                        }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
                     _ => {}
@@ -91,7 +120,9 @@ impl Engine {
             }
         });
         let d = self.discovery.clone();
-        tokio::spawn(async move { d.refresh().await; });
+        tokio::spawn(async move {
+            d.refresh().await;
+        });
         let me = self.clone();
         tokio::spawn(async move {
             loop {
@@ -105,34 +136,59 @@ impl Engine {
 
     async fn avvia_server(&self) -> bool {
         let mut g = self.server.lock().await;
-        if g.is_some() { return true; }
-        if self.sh.identity.read().unwrap().stato != "ok" { *self.server_error.lock().unwrap() = "identita".into(); return false; }
+        if g.is_some() {
+            return true;
+        }
+        if self.sh.identity.read().unwrap().stato != "ok" {
+            *self.server_error.lock().unwrap() = "identita".into();
+            return false;
+        }
         match server::start(self.sh.clone(), self.receiver.clone(), self.sh.port()).await {
-            Ok(h) => { *g = Some(h); self.server_error.lock().unwrap().clear(); self.sh.bus.emit("server"); true }
+            Ok(h) => {
+                *g = Some(h);
+                self.server_error.lock().unwrap().clear();
+                self.sh.bus.emit("server");
+                true
+            }
             Err(e) => {
-                *self.server_error.lock().unwrap() = if e.kind() == std::io::ErrorKind::AddrInUse || e.kind() == std::io::ErrorKind::PermissionDenied { "porta".into() } else { e.to_string() };
+                *self.server_error.lock().unwrap() =
+                    if e.kind() == std::io::ErrorKind::AddrInUse || e.kind() == std::io::ErrorKind::PermissionDenied { "porta".into() } else { e.to_string() };
                 crate::dlog!("server non avviato: {e}");
                 false
             }
         }
     }
 
-    pub async fn riprova_server(&self) -> bool { let ok = self.avvia_server().await; self.sh.bus.emit("server"); ok }
+    pub async fn riprova_server(&self) -> bool {
+        let ok = self.avvia_server().await;
+        self.sh.bus.emit("server");
+        ok
+    }
 
     pub async fn stop(&self) {
         self.cancel.cancel();
         self.discovery.stop();
         self.android.stop();
-        if let Some(h) = self.server.lock().await.take() { h.stop().await; }
+        if let Some(h) = self.server.lock().await.take() {
+            h.stop().await;
+        }
     }
 
-    fn server_attivo(&self) -> bool { self.server.try_lock().map(|g| g.is_some()).unwrap_or(true) }
+    fn server_attivo(&self) -> bool {
+        self.server.try_lock().map(|g| g.is_some()).unwrap_or(true)
+    }
 
     /// «Aggiorna» (manuale): riannuncia, riverifica i dispositivi noti su tutti i loro indirizzi e, se serve, riavvia il server.
     /// Restituisce quanti dispositivi hanno risposto.
     pub async fn aggiorna(self: &Arc<Self>) -> usize {
-        { let mut c = self.cache.lock().unwrap(); c.remove("rete_ip"); c.remove("rete_nome"); }
-        if !self.server_attivo() { self.avvia_server().await; }
+        {
+            let mut c = self.cache.lock().unwrap();
+            c.remove("rete_ip");
+            c.remove("rete_nome");
+        }
+        if !self.server_attivo() {
+            self.avvia_server().await;
+        }
         let n = self.discovery.refresh().await;
         self.sh.bus.emit("server");
         n
@@ -147,25 +203,35 @@ impl Engine {
 
     pub fn invia(self: &Arc<Self>, fp: &str, percorsi: &[String], testo: Option<String>) -> Result<String, String> {
         let dev = self.sh.registry.get(fp).ok_or("Dispositivo non trovato: apri l'app compatibile (ad es. LocalSend) sul destinatario e premi «Aggiorna».")?;
-        if self.sh.identity.read().unwrap().stato != "ok" { return Err("Identità non valida: rigenerala dalle Impostazioni.".into()); }
+        if self.sh.identity.read().unwrap().stato != "ok" {
+            return Err("Identità non valida: rigenerala dalle Impostazioni.".into());
+        }
         let testo = testo.filter(|t| !t.trim().is_empty());
         self.sender.invia(&dev, percorsi, testo, false)
     }
 
     /// «Riprova i file non completati» di un invio terminato (nuovo invio verso lo stesso dispositivo).
     pub fn riprova(self: &Arc<Self>, jid: &str) -> Result<(String, Vec<String>), String> {
-        if self.sh.identity.read().unwrap().stato != "ok" { return Err("Identità non valida: rigenerala dalle Impostazioni.".into()); }
+        if self.sh.identity.read().unwrap().stato != "ok" {
+            return Err("Identità non valida: rigenerala dalle Impostazioni.".into());
+        }
         let fp = self.sender.fp_di(jid).ok_or("Trasferimento non trovato")?;
         self.sender.riprova(jid, self.sh.registry.get(&fp))
     }
 
     /// Un dispositivo ricordato si ripresenta con un'impronta diversa e l'utente decide che è lo stesso: il nuovo prende il
     /// posto del vecchio nell'elenco, senza ereditare la conferma.
-    pub fn identita_sostituisci(&self, old_fp: &str, new_fp: &str) -> bool { self.sh.registry.replace_remembered(old_fp, new_fp) }
+    pub fn identita_sostituisci(&self, old_fp: &str, new_fp: &str) -> bool {
+        self.sh.registry.replace_remembered(old_fp, new_fp)
+    }
     /// L'utente ha letto l'avviso di cambio d'identità e non vuole altro: il vecchio record resta com'è.
-    pub fn identita_ignora(&self, new_fp: &str) -> bool { self.sh.registry.dismiss_change(new_fp) }
+    pub fn identita_ignora(&self, new_fp: &str) -> bool {
+        self.sh.registry.dismiss_change(new_fp)
+    }
 
-    pub fn decidi(&self, rid: &str, accetta: Option<Vec<String>>) -> bool { self.receiver.decide(rid, accetta) }
+    pub fn decidi(&self, rid: &str, accetta: Option<Vec<String>>) -> bool {
+        self.receiver.decide(rid, accetta)
+    }
 
     /// La stella è solo una scorciatoia (ordine e accesso rapido): non autorizza nulla, non conferma l'identità.
     pub fn preferito(&self, fp: &str, on: bool) -> bool {
@@ -183,17 +249,33 @@ impl Engine {
     }
 
     pub fn aggiorna_impostazioni(&self, patch: &Map<String, Value>) -> Vec<String> {
-        let patch: Map<String, Value> = patch.iter().filter(|(k, _)| CONF_KEYS.contains(&k.as_str()) || *k == "wizard_fatto").map(|(k, v)| (k.clone(), v.clone())).collect();
+        let patch: Map<String, Value> =
+            patch.iter().filter(|(k, _)| CONF_KEYS.contains(&k.as_str()) || *k == "wizard_fatto").map(|(k, v)| (k.clone(), v.clone())).collect();
         let done = self.sh.settings.aggiorna(&patch);
-        for k in ["cartella", "cartella_foto"] { if let Some(v) = done.get(k).and_then(Value::as_str) { let _ = std::fs::create_dir_all(v); } }
-        if let Some(v) = done.get("avvio_login").and_then(Value::as_bool) { desktop::imposta_avvio(&self.sh.paths, v); }
-        if let Some(v) = done.get("notifiche").and_then(Value::as_bool) { self.sh.notifier.enable(v); }
-        if done.contains_key("nome_pc") { let d = self.discovery.clone(); tokio::spawn(async move { d.announce(true).await }); }
+        for k in ["cartella", "cartella_foto"] {
+            if let Some(v) = done.get(k).and_then(Value::as_str) {
+                let _ = std::fs::create_dir_all(v);
+            }
+        }
+        if let Some(v) = done.get("avvio_login").and_then(Value::as_bool) {
+            desktop::imposta_avvio(&self.sh.paths, v);
+        }
+        if let Some(v) = done.get("notifiche").and_then(Value::as_bool) {
+            self.sh.notifier.enable(v);
+        }
+        if done.contains_key("nome_pc") {
+            let d = self.discovery.clone();
+            tokio::spawn(async move { d.announce(true).await });
+        }
         self.sh.bus.emit("impostazioni");
         done.keys().cloned().collect()
     }
 
-    pub fn imposta_pin(&self, pin: Option<&str>) -> bool { let ok = self.sh.settings.imposta_pin(pin); self.sh.bus.emit("impostazioni"); ok }
+    pub fn imposta_pin(&self, pin: Option<&str>) -> bool {
+        let ok = self.sh.settings.imposta_pin(pin);
+        self.sh.bus.emit("impostazioni");
+        ok
+    }
 
     pub fn ripristina_impostazioni(&self) -> String {
         let bk = self.sh.settings.ripristina();
@@ -205,13 +287,17 @@ impl Engine {
     }
 
     pub async fn rigenera_identita(self: &Arc<Self>) -> bool {
-        if let Some(h) = self.server.lock().await.take() { h.stop().await; }     // il vecchio certificato non va più usato
+        if let Some(h) = self.server.lock().await.take() {
+            h.stop().await;
+        } // il vecchio certificato non va più usato
         let r = self.sh.identity.write().unwrap().rigenera();
-        if r.is_err() { return false; }
+        if r.is_err() {
+            return false;
+        }
         self.sh.registry.set_own_fp(&self.sh.fingerprint());
         self.sh.registry.clear();
         let ok = self.avvia_server().await;
-        self.discovery.announce(true).await;            // con il nuovo certificato
+        self.discovery.announce(true).await; // con il nuovo certificato
         self.sh.bus.emit("server");
         ok
     }
@@ -224,8 +310,19 @@ impl Engine {
         let code = {
             let mut w = self.wizard.lock().unwrap();
             let reuse = w.pending.as_ref().filter(|c| c.fp == dev.fp && c.created.elapsed() < Duration::from_secs(300) && c.tries < 5).map(|c| c.code.clone());
-            let code = reuse.unwrap_or_else(|| { use rand::Rng; rand::thread_rng().gen_range(100000..1_000_000).to_string() });
-            w.pending = Some(Challenge { fp: dev.fp.clone(), alias: dev.alias.clone(), ip: dev.ip.clone(), port: dev.port, code: code.clone(), created: Instant::now(), tries: w.pending.as_ref().filter(|c| c.fp == dev.fp).map_or(0, |c| c.tries) });
+            let code = reuse.unwrap_or_else(|| {
+                use rand::Rng;
+                rand::thread_rng().gen_range(100000..1_000_000).to_string()
+            });
+            w.pending = Some(Challenge {
+                fp: dev.fp.clone(),
+                alias: dev.alias.clone(),
+                ip: dev.ip.clone(),
+                port: dev.port,
+                code: code.clone(),
+                created: Instant::now(),
+                tries: w.pending.as_ref().filter(|c| c.fp == dev.fp).map_or(0, |c| c.tries),
+            });
             code
         };
         let msg = format!("Cable — codice di verifica: {code}. Inseriscilo solo in Cable sul PC che hai davanti. Scade tra 5 minuti.");
@@ -237,9 +334,15 @@ impl Engine {
 
     pub fn verifica_conferma(&self, code: &str) -> Value {
         let mut w = self.wizard.lock().unwrap();
-        let Some(c) = w.pending.as_mut() else { return json!({"ok": false, "motivo": "missing", "errore": "Nessun codice attivo: premi «Invia codice al telefono»."}) };
-        if c.created.elapsed() > Duration::from_secs(300) { return json!({"ok": false, "motivo": "expired", "errore": "Sono passati 5 minuti: invia un nuovo codice."}); }
-        if c.tries >= 5 { return json!({"ok": false, "motivo": "attempts", "errore": "Hai sbagliato 5 volte: invia un nuovo codice."}); }
+        let Some(c) = w.pending.as_mut() else {
+            return json!({"ok": false, "motivo": "missing", "errore": "Nessun codice attivo: premi «Invia codice al telefono»."});
+        };
+        if c.created.elapsed() > Duration::from_secs(300) {
+            return json!({"ok": false, "motivo": "expired", "errore": "Sono passati 5 minuti: invia un nuovo codice."});
+        }
+        if c.tries >= 5 {
+            return json!({"ok": false, "motivo": "attempts", "errore": "Hai sbagliato 5 volte: invia un nuovo codice."});
+        }
         let code: String = code.chars().filter(|c| !c.is_whitespace()).collect();
         if code.len() != 6 || !code.bytes().all(|b| b.is_ascii_digit()) {
             return json!({"ok": false, "motivo": "format", "errore": "Inserisci le 6 cifre del messaggio «Pixel Hub» ricevuto in LocalSend sul telefono."});
@@ -277,10 +380,14 @@ impl Engine {
 
     fn wizard_snapshot(&self) -> Value {
         let w = self.wizard.lock().unwrap();
-        let ch = w.pending.as_ref().map(|c| {
-            let rest = 300u64.saturating_sub(c.created.elapsed().as_secs());
-            json!({"attivo": rest > 0 && c.tries < 5, "secondi": rest, "tentativi": 5 - c.tries.min(5), "alias": c.alias, "fp": c.fp})
-        }).unwrap_or(json!({"attivo": false, "secondi": 0, "tentativi": 5}));
+        let ch = w
+            .pending
+            .as_ref()
+            .map(|c| {
+                let rest = 300u64.saturating_sub(c.created.elapsed().as_secs());
+                json!({"attivo": rest > 0 && c.tries < 5, "secondi": rest, "tentativi": 5 - c.tries.min(5), "alias": c.alias, "fp": c.fp})
+            })
+            .unwrap_or(json!({"attivo": false, "secondi": 0, "tentativi": 5}));
         let invio = w.job.as_ref().and_then(|j| self.sender.stato_di(j)).map(|(s, e)| json!({"stato": s, "errore": e})).unwrap_or(Value::Null);
         let prova = w.prova.as_ref().is_some_and(|(ip, t)| self.receiver.ultimo_arrivo_da(ip, *t));
         json!({"sfida": ch, "invio": invio, "confermato_fp": w.confermato_fp, "prova_avviata": w.prova.is_some(), "prova_ricevuta": prova})
@@ -288,7 +395,11 @@ impl Engine {
 
     // ------------------------------------------------------------------ stato per la UI
     fn cached(&self, key: &'static str, ttl: Duration, f: impl FnOnce() -> Value) -> Value {
-        if let Some((t, v)) = self.cache.lock().unwrap().get(key) { if t.elapsed() < ttl { return v.clone(); } }
+        if let Some((t, v)) = self.cache.lock().unwrap().get(key) {
+            if t.elapsed() < ttl {
+                return v.clone();
+            }
+        }
         let v = f();
         self.cache.lock().unwrap().insert(key, (Instant::now(), v.clone()));
         v
@@ -296,22 +407,36 @@ impl Engine {
 
     fn recenti(&self) -> Value {
         let Ok(rd) = std::fs::read_dir(self.sh.settings.str("cartella")) else { return json!([]) };
-        let mut v: Vec<(f64, Value)> = rd.flatten().filter(|e| !e.file_name().to_string_lossy().starts_with('.')).filter_map(|e| {
-            let m = e.metadata().ok()?;
-            let mt = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs_f64();
-            let n = e.file_name().to_string_lossy().into_owned();
-            Some((mt, json!({"nome": n, "path": e.path().to_string_lossy(), "size": m.len(), "mtime": mt, "dir": m.is_dir(),
-                              "tipo": if m.is_dir() { "cartella" } else { tipo_file(&n) }})))
-        }).collect();
+        let mut v: Vec<(f64, Value)> = rd
+            .flatten()
+            .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+            .filter_map(|e| {
+                let m = e.metadata().ok()?;
+                let mt = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs_f64();
+                let n = e.file_name().to_string_lossy().into_owned();
+                Some((
+                    mt,
+                    json!({"nome": n, "path": e.path().to_string_lossy(), "size": m.len(), "mtime": mt, "dir": m.is_dir(),
+                              "tipo": if m.is_dir() { "cartella" } else { tipo_file(&n) }}),
+                ))
+            })
+            .collect();
         v.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
         Value::Array(v.into_iter().take(40).map(|x| x.1).collect())
     }
 
     fn cambi_identita(&self) -> Value {
-        Value::Array(self.sh.registry.identity_changes().into_iter().map(|c| {
-            let vecchio_confermato = self.sh.settings.preferiti().get(&c.old_fp).is_some_and(|r| r["confermato"] == json!(true));
-            json!({"antico": c.old_fp, "nuovo": c.new_fp, "nome": c.alias, "ip": c.ip, "quando": c.when, "vecchio_confermato": vecchio_confermato})
-        }).collect())
+        Value::Array(
+            self.sh
+                .registry
+                .identity_changes()
+                .into_iter()
+                .map(|c| {
+                    let vecchio_confermato = self.sh.settings.preferiti().get(&c.old_fp).is_some_and(|r| r["confermato"] == json!(true));
+                    json!({"antico": c.old_fp, "nuovo": c.new_fp, "nome": c.alias, "ip": c.ip, "quando": c.when, "vecchio_confermato": vecchio_confermato})
+                })
+                .collect(),
+        )
     }
 
     /// Per le richieste in attesa aggiunge, se l'indirizzo del mittente corrisponde a un dispositivo già visto, chi è
@@ -335,7 +460,9 @@ impl Engine {
         let ips = self.cached("rete_ip", Duration::from_secs(60), || json!(local_ipv4().iter().map(|i| i.to_string()).collect::<Vec<_>>()));
         let nome_rete = self.cached("rete_nome", Duration::from_secs(60), || json!(network_name()));
         let mut conf = Map::new();
-        for k in CONF_KEYS.iter().chain(["wizard_fatto"].iter()) { conf.insert(k.to_string(), s.get(*k).cloned().unwrap_or(Value::Null)); }
+        for k in CONF_KEYS.iter().chain(["wizard_fatto"].iter()) {
+            conf.insert(k.to_string(), s.get(*k).cloned().unwrap_or(Value::Null));
+        }
         json!({
             "versione": VERSION, "utente": nome_utente(), "conf": conf, "pin_impostato": !s["pin_ricezione"].is_null(),
             "dispositivi": self.sh.registry.snapshot(), "cambi_identita": self.cambi_identita(), "ricezioni": self.arricchisci_ricezioni(ric), "messaggi": msg, "invii": self.sender.snapshot(),
@@ -353,26 +480,43 @@ impl Engine {
     // ------------------------------------------------------------------ diagnostica
     /// Testo per la sezione Diagnostica, con ipotesi distinte e non assolute.
     pub fn diagnostica(&self) -> String {
-        let zones = Command::new("firewall-cmd").arg("--get-active-zones").output().ok().filter(|o| o.status.success())
+        let zones = Command::new("firewall-cmd")
+            .arg("--get-active-zones")
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
             .map(|o| String::from_utf8_lossy(&o.stdout).replace('\n', " | "));
         let ips = local_ipv4();
         let srv_on = self.server.try_lock().map(|g| g.is_some()).unwrap_or(true);
         let err = self.server_error.lock().unwrap().clone();
         let id = self.sh.identity.read().unwrap();
         let mut l = vec![format!("Cable {VERSION} (Rust)")];
-        if let Ok(t) = std::fs::read_to_string("/etc/fedora-release") { l.push(t.trim().to_string()); }
-        l.push(format!("Server HTTPS: {} (porta {})", if srv_on { "attivo".to_string() } else { format!("SPENTO: {}", if err.is_empty() { "?" } else { &err }) }, self.port()));
+        if let Ok(t) = std::fs::read_to_string("/etc/fedora-release") {
+            l.push(t.trim().to_string());
+        }
+        l.push(format!(
+            "Server HTTPS: {} (porta {})",
+            if srv_on { "attivo".to_string() } else { format!("SPENTO: {}", if err.is_empty() { "?" } else { &err }) },
+            self.port()
+        ));
         l.push(format!("Identità: {} {}", id.stato, if id.fingerprint.is_empty() { String::new() } else { format!("{}…", &id.fingerprint[..16]) }));
         l.push(format!("Indirizzi: {}", if ips.is_empty() { "nessuno".into() } else { ips.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(", ") }));
         let mc = self.discovery.errore.lock().unwrap().clone();
         l.push(format!("Multicast: {}", if mc.is_empty() { "ok" } else { &mc }));
-        l.push(format!("Eventi di rete: {}", match self.discovery.dbus.load(std::sync::atomic::Ordering::Relaxed) {
-            1 => "D-Bus (NetworkManager, logind) in ascolto, più controllo periodico ogni 5 s",
-            2 => "D-Bus non disponibile: solo controllo periodico delle interfacce ogni 5 s e rilevamento della ripresa dalla sospensione",
-            _ => "in avvio" }));
+        l.push(format!(
+            "Eventi di rete: {}",
+            match self.discovery.dbus.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "D-Bus (NetworkManager, logind) in ascolto, più controllo periodico ogni 5 s",
+                2 => "D-Bus non disponibile: solo controllo periodico delle interfacce ogni 5 s e rilevamento della ripresa dalla sospensione",
+                _ => "in avvio",
+            }
+        ));
         l.extend(crate::discovery::interfaces_report(&crate::discovery::interfaces()));
         let m = self.discovery.membership();
-        l.push(format!("Ascolto multicast su: {}", if m.is_empty() { "nessuna interfaccia".to_string() } else { m.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(", ") }));
+        l.push(format!(
+            "Ascolto multicast su: {}",
+            if m.is_empty() { "nessuna interfaccia".to_string() } else { m.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(", ") }
+        ));
         let (vicini, ricordati) = {
             let v = self.sh.registry.snapshot();
             let a = v.as_array().cloned().unwrap_or_default();
@@ -383,13 +527,28 @@ impl Engine {
         l.push(format!("Firewall: {}", zones.unwrap_or_else(|| "firewalld non interrogabile".into())));
         l.push(String::new());
         let mut hints = vec![];
-        if ips.is_empty() { hints.push("Nessuna rete attiva: connettiti al Wi-Fi o all'hotspot del telefono.".to_string()); }
-        if err == "porta" { hints.push(format!("La porta {} è occupata, di solito da LocalSend per PC o da Pixel Hub 5.0 ancora aperto: chiudilo e premi Riprova.", self.port())); }
-        if !mc.is_empty() { hints.push(format!("La scoperta automatica non parte ({mc}): puoi comunque inserire l'IP a mano.")); }
+        if ips.is_empty() {
+            hints.push("Nessuna rete attiva: connettiti al Wi-Fi o all'hotspot del telefono.".to_string());
+        }
+        if err == "porta" {
+            hints.push(format!(
+                "La porta {} è occupata, di solito da LocalSend per PC o da Pixel Hub 5.0 ancora aperto: chiudilo e premi Riprova.",
+                self.port()
+            ));
+        }
+        if !mc.is_empty() {
+            hints.push(format!("La scoperta automatica non parte ({mc}): puoi comunque inserire l'IP a mano."));
+        }
         if srv_on && self.sh.registry.is_empty() {
             hints.push(format!("Nessun dispositivo visto. Cause possibili: app compatibile (ad es. LocalSend) chiusa sullo smartphone, reti diverse, isolamento client del router, VPN, oppure firewall del PC (porta {} TCP/UDP): verifica una per volta, il firewall è solo una delle ipotesi.", self.port()));
         }
-        if hints.is_empty() { l.push("• Nessun problema evidente.".into()); } else { for h in hints { l.push(format!("• {h}")); } }
+        if hints.is_empty() {
+            l.push("• Nessun problema evidente.".into());
+        } else {
+            for h in hints {
+                l.push(format!("• {h}"));
+            }
+        }
         l.join("\n")
     }
 }
@@ -404,7 +563,11 @@ fn componenti() -> Value {
 fn network_name() -> String {
     let Ok(o) = Command::new("nmcli").args(["-t", "-f", "NAME,TYPE", "connection", "show", "--active"]).output() else { return String::new() };
     for l in String::from_utf8_lossy(&o.stdout).lines() {
-        if let Some((n, t)) = l.rsplit_once(':') { if t.contains("wireless") || t.contains("ethernet") { return n.replace("\\:", ":"); } }
+        if let Some((n, t)) = l.rsplit_once(':') {
+            if t.contains("wireless") || t.contains("ethernet") {
+                return n.replace("\\:", ":");
+            }
+        }
     }
     String::new()
 }
@@ -412,10 +575,14 @@ fn network_name() -> String {
 fn nome_utente() -> String {
     unsafe {
         let pw = libc::getpwuid(libc::getuid());
-        if pw.is_null() { return String::new(); }
+        if pw.is_null() {
+            return String::new();
+        }
         let g = std::ffi::CStr::from_ptr((*pw).pw_gecos).to_string_lossy().into_owned();
         g.split(',').next().unwrap_or("").split_whitespace().next().unwrap_or("").to_string()
     }
 }
 
-pub fn recenti_path(e: &Engine) -> PathBuf { PathBuf::from(e.sh.settings.str("cartella")) }
+pub fn recenti_path(e: &Engine) -> PathBuf {
+    PathBuf::from(e.sh.settings.str("cartella"))
+}

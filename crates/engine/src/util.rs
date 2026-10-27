@@ -23,18 +23,28 @@ pub enum PathError {
 pub fn clean_label(v: &str, limit: usize, default: &str) -> String {
     let s: String = v.chars().filter(|c| !c.is_control()).collect();
     let s: String = s.trim().chars().take(limit).collect();
-    if s.is_empty() { default.to_string() } else { s }
+    if s.is_empty() {
+        default.to_string()
+    } else {
+        s
+    }
 }
 
 fn truncate_bytes(s: &str, limit: usize) -> String {
-    if s.len() <= limit { return s.to_string(); }
+    if s.len() <= limit {
+        return s.to_string();
+    }
     let mut end = limit;
-    while end > 0 && !s.is_char_boundary(end) { end -= 1; }
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
     s[..end].to_string()
 }
 
 pub fn truncate_name(name: &str) -> String {
-    if name.len() <= MAX_COMPONENT_BYTES { return name.to_string(); }
+    if name.len() <= MAX_COMPONENT_BYTES {
+        return name.to_string();
+    }
     if let Some((stem, ext)) = name.rsplit_once('.') {
         if !stem.is_empty() && ext.len() <= 20 {
             return format!("{}.{}", truncate_bytes(stem, MAX_COMPONENT_BYTES - ext.len() - 1), ext);
@@ -51,7 +61,9 @@ pub fn safe_parts(name: &str) -> Vec<String> {
         .filter(|p| !p.is_empty() && p != "." && p != "..")
         .map(|p| truncate_name(&p))
         .collect();
-    if parts.is_empty() { parts.push("file".into()); }
+    if parts.is_empty() {
+        parts.push("file".into());
+    }
     parts
 }
 
@@ -70,10 +82,14 @@ pub fn prepare_target(root: &Path, parts: &[String]) -> Result<PathBuf, PathErro
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
             Err(e) => return Err(e.into()),
         }
-        if !next.is_dir() { return Err(PathError::NotDir); }
+        if !next.is_dir() {
+            return Err(PathError::NotDir);
+        }
         cur = next;
     }
-    if !fs::canonicalize(&cur)?.starts_with(&root) { return Err(PathError::Outside); }
+    if !fs::canonicalize(&cur)?.starts_with(&root) {
+        return Err(PathError::Outside);
+    }
     let fin = cur.join(parts.last().unwrap());
     if fs::symlink_metadata(&fin).map(|m| m.file_type().is_symlink()).unwrap_or(false) {
         return Err(PathError::Symlink);
@@ -90,10 +106,15 @@ pub fn commit_unique(tmp: &Path, dest: &Path) -> io::Result<PathBuf> {
     for i in 0..10000 {
         let cand = if i == 0 { dest.to_path_buf() } else { dest.with_file_name(format!("{stem} ({i}){suffix}")) };
         match fs::hard_link(tmp, &cand) {
-            Ok(()) => { fs::remove_file(tmp)?; return Ok(cand); }
+            Ok(()) => {
+                fs::remove_file(tmp)?;
+                return Ok(cand);
+            }
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(_) => {
-                if fs::symlink_metadata(&cand).is_ok() { continue; }
+                if fs::symlink_metadata(&cand).is_ok() {
+                    continue;
+                }
                 fs::rename(tmp, &cand)?;
                 return Ok(cand);
             }
@@ -127,7 +148,9 @@ pub fn random_hex(bytes: usize) -> String {
 }
 
 pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() { return false; }
+    if a.len() != b.len() {
+        return false;
+    }
     a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
@@ -135,13 +158,24 @@ pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 pub struct Progress {
     inner: Mutex<ProgressInner>,
 }
-struct ProgressInner { total: u64, samples: VecDeque<(Instant, u64)> }
+struct ProgressInner {
+    total: u64,
+    samples: VecDeque<(Instant, u64)>,
+}
 
-impl Default for Progress { fn default() -> Self { Self::new() } }
+impl Default for Progress {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl Progress {
     const WINDOW: Duration = Duration::from_secs(4);
-    pub fn new() -> Self { Progress { inner: Mutex::new(ProgressInner { total: 0, samples: VecDeque::new() }) } }
-    pub fn add(&self, n: u64) { self.add_at(Instant::now(), n) }
+    pub fn new() -> Self {
+        Progress { inner: Mutex::new(ProgressInner { total: 0, samples: VecDeque::new() }) }
+    }
+    pub fn add(&self, n: u64) {
+        self.add_at(Instant::now(), n)
+    }
     fn add_at(&self, now: Instant, n: u64) {
         let mut g = self.inner.lock().unwrap();
         g.total += n;
@@ -153,9 +187,13 @@ impl Progress {
             g.samples.pop_front();
         }
     }
-    pub fn total(&self) -> u64 { self.inner.lock().unwrap().total }
+    pub fn total(&self) -> u64 {
+        self.inner.lock().unwrap().total
+    }
     /// (byte/s, secondi di campioni) se la misura è attendibile (almeno 1 s di campioni recenti).
-    fn measure(&self) -> Option<(f64, f64)> { self.measure_at(Instant::now()) }
+    fn measure(&self) -> Option<(f64, f64)> {
+        self.measure_at(Instant::now())
+    }
     fn measure_at(&self, now: Instant) -> Option<(f64, f64)> {
         let g = self.inner.lock().unwrap();
         let (t0, b0) = *g.samples.front()?;
@@ -167,13 +205,19 @@ impl Progress {
         Some(((b1.saturating_sub(b0)) as f64 / span, span))
     }
     /// Byte/s se la misura è attendibile (almeno 1 s di campioni recenti).
-    pub fn speed(&self) -> Option<f64> { self.measure().map(|m| m.0) }
+    pub fn speed(&self) -> Option<f64> {
+        self.measure().map(|m| m.0)
+    }
     /// Secondi rimanenti, solo se la velocità è stabile da almeno 3 s, non nulla, e la stima è sensata (< 24 h).
     /// Altrimenti `None`: meglio non mostrare nulla che un numero inventato.
-    pub fn eta(&self, remaining: u64) -> Option<f64> { self.eta_at(Instant::now(), remaining) }
+    pub fn eta(&self, remaining: u64) -> Option<f64> {
+        self.eta_at(Instant::now(), remaining)
+    }
     fn eta_at(&self, now: Instant, remaining: u64) -> Option<f64> {
         let (v, span) = self.measure_at(now)?;
-        if span < 3.0 || v < 1.0 || remaining == 0 { return None; }
+        if span < 3.0 || v < 1.0 || remaining == 0 {
+            return None;
+        }
         let eta = remaining as f64 / v;
         (eta < 86_400.0).then_some(eta)
     }
@@ -191,7 +235,9 @@ mod tests {
         p.add_at(t0, 0);
         p.add_at(t0 + Duration::from_millis(500), 500_000);
         assert!(p.measure_at(t0 + Duration::from_millis(600)).is_none(), "meno di 1 s di campioni");
-        for i in 1..=4u64 { p.add_at(t0 + Duration::from_millis(500 + 500 * i), 500_000); }
+        for i in 1..=4u64 {
+            p.add_at(t0 + Duration::from_millis(500 + 500 * i), 500_000);
+        }
         let now = t0 + Duration::from_millis(2600);
         let (v, span) = p.measure_at(now).unwrap();
         assert!((v - 1_000_000.0).abs() < 1.0 && span >= 1.5, "{v} {span}");

@@ -2,6 +2,7 @@
 use crate::client::{connect_any, json_req, json_request, ClientError};
 use crate::protocol::{parse_peer_info, API};
 use crate::shared::Shared;
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use hyper::Method;
 use serde_json::{json, Value};
 use socket2::{Domain, Protocol, Socket, Type};
@@ -10,7 +11,6 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
-use futures_util::stream::{FuturesUnordered, StreamExt};
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -20,7 +20,10 @@ pub const MCAST: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 167);
 /// Eventi che rendono sospetta la presenza dei dispositivi: arrivano da D-Bus (`netwatch`), dal controllo periodico
 /// delle interfacce o dal rilevamento del salto d'orologio dopo una sospensione.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NetEvent { Network, Resume }
+pub enum NetEvent {
+    Network,
+    Resume,
+}
 
 /// Come un'interfaccia partecipa alla rete di Cable.
 ///
@@ -31,47 +34,83 @@ pub enum NetEvent { Network, Resume }
 ///   Il percorso lo sceglie il sistema operativo; Cable non blocca un indirizzo perché passa da un tunnel.
 /// * Nessun ripiego sull'interfaccia predefinita: con una VPN potrebbe essere proprio il tunnel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum IfaceKind { Lan, Virtual, Tunnel }
+pub enum IfaceKind {
+    Lan,
+    Virtual,
+    Tunnel,
+}
 
 /// Interfacce di contenitori e macchine virtuali: non portano dispositivi LocalSend e sporcano elenco e annunci.
 pub fn is_virtual_iface(name: &str) -> bool {
-    ["docker", "br-", "veth", "virbr", "vnet", "macvtap", "vboxnet", "vmnet", "lxcbr", "lxdbr", "incusbr", "podman", "cni", "flannel", "cali", "kube", "cilium", "weave", "waydroid", "dummy"]
-        .iter().any(|p| name.starts_with(p))
+    [
+        "docker", "br-", "veth", "virbr", "vnet", "macvtap", "vboxnet", "vmnet", "lxcbr", "lxdbr", "incusbr", "podman", "cni", "flannel", "cali", "kube",
+        "cilium", "weave", "waydroid", "dummy",
+    ]
+    .iter()
+    .any(|p| name.starts_with(p))
 }
 /// Tunnel/VPN: nessuna scoperta multicast e nessun «gateway del telefono» da cercare lì.
 pub fn is_tunnel_iface(name: &str) -> bool {
-    ["tun", "tap", "wg", "ppp", "vpn", "ipsec", "zt", "tailscale", "nordlynx", "proton", "mullvad", "utun", "gre", "ipip", "sit"].iter().any(|p| name.starts_with(p))
+    ["tun", "tap", "wg", "ppp", "vpn", "ipsec", "zt", "tailscale", "nordlynx", "proton", "mullvad", "utun", "gre", "ipip", "sit"]
+        .iter()
+        .any(|p| name.starts_with(p))
 }
 pub fn classify_iface(name: &str) -> IfaceKind {
-    if is_tunnel_iface(name) { IfaceKind::Tunnel } else if is_virtual_iface(name) { IfaceKind::Virtual } else { IfaceKind::Lan }
+    if is_tunnel_iface(name) {
+        IfaceKind::Tunnel
+    } else if is_virtual_iface(name) {
+        IfaceKind::Virtual
+    } else {
+        IfaceKind::Lan
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocalNet { pub name: String, pub ip: Ipv4Addr, pub mask: Ipv4Addr }
+pub struct LocalNet {
+    pub name: String,
+    pub ip: Ipv4Addr,
+    pub mask: Ipv4Addr,
+}
 
 /// Un indirizzo IPv4 locale con l'esito della politica e la ragione, per la diagnostica.
 #[derive(Clone, Debug, PartialEq)]
-pub struct IfaceInfo { pub name: String, pub ip: Ipv4Addr, pub mask: Ipv4Addr, pub usata: bool, pub motivo: &'static str }
+pub struct IfaceInfo {
+    pub name: String,
+    pub ip: Ipv4Addr,
+    pub mask: Ipv4Addr,
+    pub usata: bool,
+    pub motivo: &'static str,
+}
 
 /// Applica la politica a un elenco di (nome, ip, maschera, loopback). Pura: testabile senza toccare la rete.
 pub fn classify_addrs(addrs: impl IntoIterator<Item = (String, Ipv4Addr, Ipv4Addr, bool)>) -> Vec<IfaceInfo> {
-    addrs.into_iter().map(|(name, ip, mask, lo)| {
-        let (usata, motivo) = if lo || ip.is_loopback() { (false, "indirizzo interno del computer") }
-            else if ip.is_link_local() { (false, "indirizzo 169.254.x.x: la rete non ha assegnato un indirizzo") }
-            else { match classify_iface(&name) {
-                IfaceKind::Lan => (true, "rete locale (Wi-Fi, Ethernet o hotspot)"),
-                IfaceKind::Tunnel => (false, "tunnel VPN: la scoperta automatica non lo attraversa (l'IP a mano funziona comunque)"),
-                IfaceKind::Virtual => (false, "interfaccia virtuale di contenitori o macchine virtuali"),
-            } };
-        IfaceInfo { name, ip, mask, usata, motivo }
-    }).collect()
+    addrs
+        .into_iter()
+        .map(|(name, ip, mask, lo)| {
+            let (usata, motivo) = if lo || ip.is_loopback() {
+                (false, "indirizzo interno del computer")
+            } else if ip.is_link_local() {
+                (false, "indirizzo 169.254.x.x: la rete non ha assegnato un indirizzo")
+            } else {
+                match classify_iface(&name) {
+                    IfaceKind::Lan => (true, "rete locale (Wi-Fi, Ethernet o hotspot)"),
+                    IfaceKind::Tunnel => (false, "tunnel VPN: la scoperta automatica non lo attraversa (l'IP a mano funziona comunque)"),
+                    IfaceKind::Virtual => (false, "interfaccia virtuale di contenitori o macchine virtuali"),
+                }
+            };
+            IfaceInfo { name, ip, mask, usata, motivo }
+        })
+        .collect()
 }
 
 /// Tutti gli indirizzi IPv4 del sistema, ciascuno con l'esito della politica.
 pub fn interfaces() -> Vec<IfaceInfo> {
     classify_addrs(if_addrs::get_if_addrs().unwrap_or_default().into_iter().filter_map(|i| {
         let lo = i.is_loopback();
-        match i.addr { if_addrs::IfAddr::V4(a) => Some((i.name.clone(), a.ip, a.netmask, lo)), _ => None }
+        match i.addr {
+            if_addrs::IfAddr::V4(a) => Some((i.name.clone(), a.ip, a.netmask, lo)),
+            _ => None,
+        }
     }))
 }
 
@@ -80,14 +119,18 @@ pub fn local_nets() -> Vec<LocalNet> {
     interfaces().into_iter().filter(|i| i.usata).map(|i| LocalNet { name: i.name, ip: i.ip, mask: i.mask }).collect()
 }
 
-pub fn local_ipv4() -> Vec<Ipv4Addr> { local_nets().into_iter().map(|n| n.ip).collect() }
+pub fn local_ipv4() -> Vec<Ipv4Addr> {
+    local_nets().into_iter().map(|n| n.ip).collect()
+}
 
 /// Righe di diagnostica: interfacce usate ed escluse, con la ragione.
 pub fn interfaces_report(all: &[IfaceInfo]) -> Vec<String> {
     let usate: Vec<String> = all.iter().filter(|i| i.usata).map(|i| format!("{} {}", i.name, i.ip)).collect();
     let mut l = vec![format!("Interfacce usate per la scoperta: {}", if usate.is_empty() { "nessuna".to_string() } else { usate.join(", ") })];
     let escluse: Vec<String> = all.iter().filter(|i| !i.usata && !i.ip.is_loopback()).map(|i| format!("{} {} ({})", i.name, i.ip, i.motivo)).collect();
-    if !escluse.is_empty() { l.push(format!("Interfacce escluse: {}", escluse.join("; "))); }
+    if !escluse.is_empty() {
+        l.push(format!("Interfacce escluse: {}", escluse.join("; ")));
+    }
     l
 }
 
@@ -95,7 +138,9 @@ pub fn interfaces_report(all: &[IfaceInfo]) -> Vec<String> {
 /// Con `force` si lascia e si riprende tutto: dopo un cambio rete o una sospensione le membership possono essere
 /// decadute senza che il processo se ne accorga.
 pub fn plan_membership(joined: &BTreeSet<Ipv4Addr>, desired: &BTreeSet<Ipv4Addr>, force: bool) -> (Vec<Ipv4Addr>, Vec<Ipv4Addr>) {
-    if force { return (joined.iter().copied().collect(), desired.iter().copied().collect()); }
+    if force {
+        return (joined.iter().copied().collect(), desired.iter().copied().collect());
+    }
     (joined.difference(desired).copied().collect(), desired.difference(joined).copied().collect())
 }
 
@@ -111,17 +156,25 @@ pub fn parse_gateways(route_table: &str) -> Vec<String> {
     let mut v: Vec<(u32, String)> = vec![];
     for l in route_table.lines().skip(1) {
         let f: Vec<&str> = l.split_whitespace().collect();
-        if f.len() < 8 || f[1] != "00000000" || is_virtual_iface(f[0]) || is_tunnel_iface(f[0]) { continue; }
+        if f.len() < 8 || f[1] != "00000000" || is_virtual_iface(f[0]) || is_tunnel_iface(f[0]) {
+            continue;
+        }
         let (Ok(g), Ok(metric)) = (u32::from_str_radix(f[2], 16), f[6].parse::<u32>()) else { continue };
-        if g == 0 { continue; }
+        if g == 0 {
+            continue;
+        }
         let gw = Ipv4Addr::from(g.to_le_bytes()).to_string();
-        if !v.iter().any(|(_, x)| *x == gw) { v.push((metric, gw)); }
+        if !v.iter().any(|(_, x)| *x == gw) {
+            v.push((metric, gw));
+        }
     }
     v.sort();
     v.into_iter().map(|x| x.1).collect()
 }
 
-fn gateways() -> Vec<String> { parse_gateways(&std::fs::read_to_string("/proc/net/route").unwrap_or_default()) }
+fn gateways() -> Vec<String> {
+    parse_gateways(&std::fs::read_to_string("/proc/net/route").unwrap_or_default())
+}
 
 pub struct Discovery {
     sh: Arc<Shared>,
@@ -142,25 +195,44 @@ pub struct Discovery {
 impl Discovery {
     pub fn new(sh: Arc<Shared>, multicast: bool) -> Arc<Discovery> {
         let (ev_tx, ev_rx) = mpsc::unbounded_channel();
-        Arc::new(Discovery { sh, multicast, cancel: CancellationToken::new(), errore: Mutex::new(String::new()),
-                             last_reply: Mutex::new(HashMap::new()), joined: Mutex::new(BTreeSet::new()), sock: Mutex::new(None),
-                             ev_tx, ev_rx: Mutex::new(Some(ev_rx)), cambi: AtomicU32::new(0), dbus: Default::default() })
+        Arc::new(Discovery {
+            sh,
+            multicast,
+            cancel: CancellationToken::new(),
+            errore: Mutex::new(String::new()),
+            last_reply: Mutex::new(HashMap::new()),
+            joined: Mutex::new(BTreeSet::new()),
+            sock: Mutex::new(None),
+            ev_tx,
+            ev_rx: Mutex::new(Some(ev_rx)),
+            cambi: AtomicU32::new(0),
+            dbus: Default::default(),
+        })
     }
 
     pub fn start(self: &Arc<Self>) {
-        if self.multicast { let me = self.clone(); tokio::spawn(async move { me.listen().await }); }
+        if self.multicast {
+            let me = self.clone();
+            tokio::spawn(async move { me.listen().await });
+        }
         if let Some(rx) = self.ev_rx.lock().unwrap().take() {
             let me = self.clone();
             tokio::spawn(async move { me.periodic(rx).await });
         }
         // D-Bus (NetworkManager, logind) come acceleratore; senza, restano il controllo periodico e il salto d'orologio
-        if self.multicast { crate::netwatch::spawn(self.ev_tx.clone(), self.cancel.clone(), self.dbus.clone()); }
+        if self.multicast {
+            crate::netwatch::spawn(self.ev_tx.clone(), self.cancel.clone(), self.dbus.clone());
+        }
     }
 
-    pub fn stop(&self) { self.cancel.cancel(); }
+    pub fn stop(&self) {
+        self.cancel.cancel();
+    }
 
     /// Segnala un cambio di rete o una ripresa (da D-Bus, dall'utente o dai test). Gli eventi ravvicinati si accorpano.
-    pub fn notifica(&self, ev: NetEvent) { let _ = self.ev_tx.send(ev); }
+    pub fn notifica(&self, ev: NetEvent) {
+        let _ = self.ev_tx.send(ev);
+    }
 
     /// Dopo un cambio rete o la ripresa dalla sospensione: la presenza dei dispositivi non è più attendibile,
     /// si riaggancia il multicast, si riannuncia e si riverificano i dispositivi ricordati.
@@ -176,7 +248,9 @@ impl Discovery {
         self.sync_membership(true);
         self.sh.bus.emit("rete");
         let me = self.clone();
-        tokio::spawn(async move { me.refresh().await; });
+        tokio::spawn(async move {
+            me.refresh().await;
+        });
     }
 
     fn bind(&self) -> std::io::Result<UdpSocket> {
@@ -190,19 +264,30 @@ impl Discovery {
 
     /// Allinea le membership multicast alle interfacce LAN attuali: lascia quelle sparite, prende le nuove.
     /// Nessun ripiego su 0.0.0.0 (lascerebbe scegliere al sistema l'interfaccia predefinita, magari una VPN).
-    fn join(&self) { self.sync_membership(false); }
+    fn join(&self) {
+        self.sync_membership(false);
+    }
 
     fn sync_membership(&self, force: bool) {
         let Some(s) = self.sock.lock().unwrap().clone() else { return };
         let desired: BTreeSet<Ipv4Addr> = local_ipv4().into_iter().collect();
         let mut j = self.joined.lock().unwrap();
         let (leave, join) = plan_membership(&j, &desired, force);
-        for ip in leave { let _ = s.leave_multicast_v4(MCAST, ip); j.remove(&ip); }
-        for ip in join { if s.join_multicast_v4(MCAST, ip).is_ok() { j.insert(ip); } }
+        for ip in leave {
+            let _ = s.leave_multicast_v4(MCAST, ip);
+            j.remove(&ip);
+        }
+        for ip in join {
+            if s.join_multicast_v4(MCAST, ip).is_ok() {
+                j.insert(ip);
+            }
+        }
     }
 
     /// Interfacce sulle quali si è effettivamente in ascolto (diagnostica e test).
-    pub fn membership(&self) -> Vec<Ipv4Addr> { self.joined.lock().unwrap().iter().copied().collect() }
+    pub fn membership(&self) -> Vec<Ipv4Addr> {
+        self.joined.lock().unwrap().iter().copied().collect()
+    }
 
     async fn listen(self: Arc<Self>) {
         while !self.cancel.is_cancelled() {
@@ -234,14 +319,20 @@ impl Discovery {
     fn on_datagram(self: &Arc<Self>, data: &[u8], ip: IpAddr) {
         let Ok(info) = serde_json::from_slice::<Value>(data) else { return };
         let Some(p) = parse_peer_info(&info) else { return };
-        if p.fp == self.sh.fingerprint() { return; }
+        if p.fp == self.sh.fingerprint() {
+            return;
+        }
         self.sh.registry.upsert(&info, &ip.to_string(), "multicast", None);
         if info["announce"] == json!(true) {
             {
                 let mut lr = self.last_reply.lock().unwrap();
-                if lr.get(&ip).is_some_and(|t| t.elapsed() < Duration::from_secs(5)) { return; }
+                if lr.get(&ip).is_some_and(|t| t.elapsed() < Duration::from_secs(5)) {
+                    return;
+                }
                 lr.insert(ip, Instant::now());
-                if lr.len() > 512 { lr.retain(|_, t| t.elapsed() < Duration::from_secs(5)); }
+                if lr.len() > 512 {
+                    lr.retain(|_, t| t.elapsed() < Duration::from_secs(5));
+                }
             }
             let me = self.clone();
             tokio::spawn(async move { me.reply_to_announce(p.fp, p.port, ip).await });
@@ -250,16 +341,20 @@ impl Discovery {
 
     async fn reply_to_announce(self: Arc<Self>, fp: String, port: u16, ip: IpAddr) {
         let Ok(tls) = self.sh.client_tls() else { return };
-        match json_request(tls, &ip.to_string(), port, Method::POST, &format!("{API}/register"), Some(&self.sh.info(true)), Duration::from_secs(4), Some(&fp)).await {
+        match json_request(tls, &ip.to_string(), port, Method::POST, &format!("{API}/register"), Some(&self.sh.info(true)), Duration::from_secs(4), Some(&fp))
+            .await
+        {
             Ok((200, _, _)) => self.sh.registry.mark_verified(&fp, Some(&ip.to_string())),
             // annuncio incoerente col certificato: quell'indirizzo non è di questo dispositivo (il dispositivo vero resta in elenco)
             Err(ClientError::Identity) => self.sh.registry.drop_addr(&fp, &ip.to_string()),
-            _ => self.announce(false).await,                                       // ripiego UDP previsto dalla specifica
+            _ => self.announce(false).await, // ripiego UDP previsto dalla specifica
         }
     }
 
     pub async fn announce(&self, announce: bool) {
-        if !self.multicast { return; }
+        if !self.multicast {
+            return;
+        }
         let mut msg = self.sh.info(true);
         msg["announce"] = json!(announce);
         let data = serde_json::to_vec(&msg).unwrap();
@@ -267,10 +362,16 @@ impl Discovery {
         let ips = local_ipv4();
         for ip in &ips {
             let Ok(s) = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)) else { continue };
-            let ok = s.set_multicast_if_v4(ip).is_ok() && s.set_multicast_ttl_v4(1).is_ok() && s.set_nonblocking(true).is_ok()
+            let ok = s.set_multicast_if_v4(ip).is_ok()
+                && s.set_multicast_ttl_v4(1).is_ok()
+                && s.set_nonblocking(true).is_ok()
                 && s.bind(&SocketAddr::from(SocketAddrV4::new(*ip, 0)).into()).is_ok();
-            if !ok { continue; }
-            if let Ok(u) = UdpSocket::from_std(s.into()) { let _ = u.send_to(&data, dest).await; }
+            if !ok {
+                continue;
+            }
+            if let Ok(u) = UdpSocket::from_std(s.into()) {
+                let _ = u.send_to(&data, dest).await;
+            }
         }
         // nessun ripiego sull'interfaccia predefinita: senza rete locale non si annuncia nulla (e mai dentro una VPN)
     }
@@ -304,16 +405,25 @@ impl Discovery {
             tick += 1;
             let slept = SystemTime::now().duration_since(wall).unwrap_or_default().saturating_sub(mono.elapsed());
             (wall, mono) = (SystemTime::now(), Instant::now());
-            if slept > Duration::from_secs(20) { ev = Some(NetEvent::Resume); }
+            if slept > Duration::from_secs(20) {
+                ev = Some(NetEvent::Resume);
+            }
             let now: BTreeSet<Ipv4Addr> = local_ipv4().into_iter().collect();
             match ev {
-                Some(NetEvent::Resume) => { nets = now; self.rete_cambiata(NetEvent::Resume); }
+                Some(NetEvent::Resume) => {
+                    nets = now;
+                    self.rete_cambiata(NetEvent::Resume);
+                }
                 // un evento di rete senza cambio di indirizzi (es. proprietà di NetworkManager) non richiede nulla
                 Some(NetEvent::Network) if now == nets => {}
-                _ if now != nets => { nets = now; self.rete_cambiata(NetEvent::Network); }
+                _ if now != nets => {
+                    nets = now;
+                    self.rete_cambiata(NetEvent::Network);
+                }
                 _ => {}
             }
-            if tick.is_multiple_of(12) {                    // ogni minuto
+            if tick.is_multiple_of(12) {
+                // ogni minuto
                 self.announce(true).await;
                 self.sh.registry.prune();
                 self.sh.bus.emit("dispositivi");
@@ -333,27 +443,45 @@ impl Discovery {
                 self.sh.registry.mark_verified(&dev.fp, Some(&ip));
                 let req = json_req(&ip, port, Method::POST, &format!("{API}/register"), Some(&self.sh.info(true)));
                 if let Ok(Ok((200, Some(mut info)))) = tokio::time::timeout(Duration::from_secs(2), c.send(req)).await {
-                    info["fingerprint"] = json!(dev.fp);          // in HTTPS l'identità è il certificato appena visto, non il JSON
+                    info["fingerprint"] = json!(dev.fp); // in HTTPS l'identità è il certificato appena visto, non il JSON
                     self.sh.registry.upsert(&info, &ip, "probe", Some(port));
                 }
                 true
             }
-            Err(_) => { self.sh.registry.mark_unreachable(&dev.fp); false }
+            Err(_) => {
+                self.sh.registry.mark_unreachable(&dev.fp);
+                false
+            }
         }
     }
 
     /// «Aggiorna»: riannuncia e riverifica fino a 16 dispositivi (vicini e ricordati), in parallelo.
     pub async fn refresh(self: &Arc<Self>) -> usize {
         self.announce(true).await;
-        let mut fps: Vec<String> = self.sh.registry.snapshot().as_array().cloned().unwrap_or_default().iter()
+        let mut fps: Vec<String> = self
+            .sh
+            .registry
+            .snapshot()
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
             .filter(|d| d["indirizzi"].as_u64().unwrap_or(0) > 0 || !d["ip"].as_str().unwrap_or("").is_empty())
-            .filter_map(|d| d["fp"].as_str().map(String::from)).collect();
+            .filter_map(|d| d["fp"].as_str().map(String::from))
+            .collect();
         fps.truncate(16);
         self.sh.registry.seed_remembered();
         let mut set = FuturesUnordered::new();
-        for fp in fps { let me = self.clone(); set.push(async move { me.probe(&fp).await }); }
+        for fp in fps {
+            let me = self.clone();
+            set.push(async move { me.probe(&fp).await });
+        }
         let mut ok = 0;
-        while let Some(r) = set.next().await { if r { ok += 1; } }
+        while let Some(r) = set.next().await {
+            if r {
+                ok += 1;
+            }
+        }
         self.sh.bus.emit("dispositivi");
         ok
     }
@@ -364,14 +492,21 @@ impl Discovery {
         self.announce(true).await;
         let mut targets = vec![];
         match ip {
-            Some(i) => match i.parse::<Ipv4Addr>() { Ok(a) => targets.push(a.to_string()), Err(_) => return 0 },
+            Some(i) => match i.parse::<Ipv4Addr>() {
+                Ok(a) => targets.push(a.to_string()),
+                Err(_) => return 0,
+            },
             None => targets.extend(gateways().into_iter().take(4)),
         }
         let mut found = 0;
         for t in targets {
             let Ok(tls) = self.sh.client_tls() else { continue };
             let port = port.unwrap_or(self.sh.port());
-            let Ok((200, Some(resp), actual)) = json_request(tls, &t, port, Method::POST, &format!("{API}/register"), Some(&self.sh.info(true)), Duration::from_secs(3), None).await else { continue };
+            let Ok((200, Some(resp), actual)) =
+                json_request(tls, &t, port, Method::POST, &format!("{API}/register"), Some(&self.sh.info(true)), Duration::from_secs(3), None).await
+            else {
+                continue;
+            };
             // in HTTPS l'identità è l'impronta del certificato appena visto, non il JSON
             let mut info = resp.clone();
             info["fingerprint"] = json!(actual);
@@ -390,14 +525,26 @@ mod tests {
 
     #[test]
     fn virtual_and_tunnel_interfaces() {
-        for n in ["docker0", "br-1a2b", "veth123", "virbr0", "vnet3", "podman1", "cni0", "lxdbr0"] { assert!(is_virtual_iface(n), "{n}"); }
-        for n in ["wlp2s0", "enp3s0", "eth0", "wlan0", "enx0011", "usb0", "br0", "tun0", "wg0"] { assert!(!is_virtual_iface(n), "{n}"); }
-        for n in ["tun0", "wg0", "ppp0", "tap1", "tailscale0", "zt5u4abcde", "nordlynx", "proton0"] { assert!(is_tunnel_iface(n), "{n}"); }
-        for n in ["wlp2s0", "enp3s0", "br0", "usb0", "docker0"] { assert!(!is_tunnel_iface(n), "{n}"); }
+        for n in ["docker0", "br-1a2b", "veth123", "virbr0", "vnet3", "podman1", "cni0", "lxdbr0"] {
+            assert!(is_virtual_iface(n), "{n}");
+        }
+        for n in ["wlp2s0", "enp3s0", "eth0", "wlan0", "enx0011", "usb0", "br0", "tun0", "wg0"] {
+            assert!(!is_virtual_iface(n), "{n}");
+        }
+        for n in ["tun0", "wg0", "ppp0", "tap1", "tailscale0", "zt5u4abcde", "nordlynx", "proton0"] {
+            assert!(is_tunnel_iface(n), "{n}");
+        }
+        for n in ["wlp2s0", "enp3s0", "br0", "usb0", "docker0"] {
+            assert!(!is_tunnel_iface(n), "{n}");
+        }
     }
 
-    fn net(name: &str, ip: &str) -> (String, Ipv4Addr, Ipv4Addr, bool) { (name.into(), ip.parse().unwrap(), "255.255.255.0".parse().unwrap(), name == "lo") }
-    fn used(v: &[IfaceInfo]) -> Vec<&str> { v.iter().filter(|i| i.usata).map(|i| i.name.as_str()).collect() }
+    fn net(name: &str, ip: &str) -> (String, Ipv4Addr, Ipv4Addr, bool) {
+        (name.into(), ip.parse().unwrap(), "255.255.255.0".parse().unwrap(), name == "lo")
+    }
+    fn used(v: &[IfaceInfo]) -> Vec<&str> {
+        v.iter().filter(|i| i.usata).map(|i| i.name.as_str()).collect()
+    }
 
     #[test]
     fn policy_keeps_lan_and_excludes_tunnels_and_virtual_ifaces() {
@@ -419,7 +566,14 @@ mod tests {
 
     #[test]
     fn lan_plus_vpn_keeps_the_lan_working() {
-        let r = classify_addrs([net("lo", "127.0.0.1"), net("wlp2s0", "192.168.1.5"), net("tun0", "10.8.0.2"), net("tailscale0", "100.64.0.9"), net("wg0", "10.66.0.2"), net("docker0", "172.17.0.1")]);
+        let r = classify_addrs([
+            net("lo", "127.0.0.1"),
+            net("wlp2s0", "192.168.1.5"),
+            net("tun0", "10.8.0.2"),
+            net("tailscale0", "100.64.0.9"),
+            net("wg0", "10.66.0.2"),
+            net("docker0", "172.17.0.1"),
+        ]);
         assert_eq!(used(&r), ["wlp2s0"], "la VPN attiva non spegne la LAN e non entra nella scoperta");
         let rep = interfaces_report(&r);
         assert!(rep[0].contains("wlp2s0 192.168.1.5") && !rep[0].contains("tun0"), "{rep:?}");
@@ -471,7 +625,11 @@ mod tests {
         let vpn = "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n\
                    wg0\t00000000\t0100000A\t0003\t0\t0\t0\t00000000\t0\t0\t0\n\
                    tailscale0\t00000000\t0100000A\t0003\t0\t0\t1\t00000000\t0\t0\t0\n";
-        assert_eq!(vpn.lines().skip(1).map(|l| l.split_whitespace().count()).collect::<Vec<_>>(), [11, 11], "righe ben formate: solo il nome dell'interfaccia le fa scartare");
+        assert_eq!(
+            vpn.lines().skip(1).map(|l| l.split_whitespace().count()).collect::<Vec<_>>(),
+            [11, 11],
+            "righe ben formate: solo il nome dell'interfaccia le fa scartare"
+        );
         assert!(parse_gateways(vpn).is_empty(), "WireGuard e Tailscale non sono gateway di un telefono");
         assert!(parse_gateways("").is_empty());
         assert!(parse_gateways("Iface\tDestination\nbroken line").is_empty());

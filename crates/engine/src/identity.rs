@@ -11,9 +11,13 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-pub fn fingerprint_der(der: &[u8]) -> String { hex::encode_upper(Sha256::digest(der)) }
+pub fn fingerprint_der(der: &[u8]) -> String {
+    hex::encode_upper(Sha256::digest(der))
+}
 
-fn provider() -> Arc<CryptoProvider> { Arc::new(ring_provider::default_provider()) }
+fn provider() -> Arc<CryptoProvider> {
+    Arc::new(ring_provider::default_provider())
+}
 
 fn write_private(p: &PathBuf, data: &[u8]) -> std::io::Result<()> {
     let mut f = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(p)?;
@@ -64,9 +68,15 @@ impl Identity {
     pub fn load(paths: &Paths) -> Identity {
         let dir = paths.identity_dir();
         let mut me = Identity {
-            paths: paths.clone(), cert_path: dir.join("cert.pem"), key_path: dir.join("key.pem"),
-            fingerprint: String::new(), stato: "invalida".into(), errore: String::new(), origine: String::new(),
-            chain: vec![], key: None,
+            paths: paths.clone(),
+            cert_path: dir.join("cert.pem"),
+            key_path: dir.join("key.pem"),
+            fingerprint: String::new(),
+            stato: "invalida".into(),
+            errore: String::new(),
+            origine: String::new(),
+            chain: vec![],
+            key: None,
         };
         me.carica();
         me
@@ -74,25 +84,38 @@ impl Identity {
 
     fn adopt(&mut self, cert: &[u8], key: &[u8], origine: &str) -> Result<(), String> {
         let (chain, k, fp) = parse(cert, key)?;
-        self.chain = chain; self.key = Some(k); self.fingerprint = fp;
-        self.stato = "ok".into(); self.errore.clear(); self.origine = origine.into();
+        self.chain = chain;
+        self.key = Some(k);
+        self.fingerprint = fp;
+        self.stato = "ok".into();
+        self.errore.clear();
+        self.origine = origine.into();
         Ok(())
     }
 
     fn carica(&mut self) {
         let dir = self.cert_path.parent().unwrap().to_path_buf();
-        if fs::create_dir_all(&dir).is_err() { self.errore = "Cartella dell'identità non utilizzabile".into(); return; }
+        if fs::create_dir_all(&dir).is_err() {
+            self.errore = "Cartella dell'identità non utilizzabile".into();
+            return;
+        }
         let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
         match (self.cert_path.exists(), self.key_path.exists()) {
             (true, true) => {
                 let r = fs::read(&self.cert_path).and_then(|c| fs::read(&self.key_path).map(|k| (c, k)));
                 match r {
-                    Ok((c, k)) => if let Err(e) = self.adopt(&c, &k, "esistente") { self.errore = format!("Identità non valida: {e}"); },
+                    Ok((c, k)) => {
+                        if let Err(e) = self.adopt(&c, &k, "esistente") {
+                            self.errore = format!("Identità non valida: {e}");
+                        }
+                    }
                     Err(e) => self.errore = format!("Identità non leggibile: {e}"),
                 }
             }
             (false, false) => {
-                if self.importa_v3() { return; }
+                if self.importa_v3() {
+                    return;
+                }
                 match generate().and_then(|(c, k)| {
                     fs::write(&self.cert_path, &c).map_err(|e| e.to_string())?;
                     write_private(&self.key_path, k.as_bytes()).map_err(|e| e.to_string())?;
@@ -109,8 +132,12 @@ impl Identity {
     fn importa_v3(&mut self) -> bool {
         let old = self.paths.legacy_cache();
         let (Ok(c), Ok(k)) = (fs::read(old.join("cert.pem")), fs::read(old.join("key.pem"))) else { return false };
-        if parse(&c, &k).is_err() { return false; }
-        if fs::write(&self.cert_path, &c).is_err() || write_private(&self.key_path, &k).is_err() { return false; }
+        if parse(&c, &k).is_err() {
+            return false;
+        }
+        if fs::write(&self.cert_path, &c).is_err() || write_private(&self.key_path, &k).is_err() {
+            return false;
+        }
         self.adopt(&c, &k, "importata-v3").is_ok()
     }
 
@@ -120,7 +147,9 @@ impl Identity {
         fs::create_dir_all(&bk).map_err(|e| e.to_string())?;
         let _ = fs::set_permissions(&bk, fs::Permissions::from_mode(0o700));
         for p in [&self.cert_path, &self.key_path] {
-            if p.exists() { fs::rename(p, bk.join(p.file_name().unwrap())).map_err(|e| e.to_string())?; }
+            if p.exists() {
+                fs::rename(p, bk.join(p.file_name().unwrap())).map_err(|e| e.to_string())?;
+            }
         }
         let (c, k) = generate()?;
         fs::write(&self.cert_path, &c).map_err(|e| e.to_string())?;
@@ -132,8 +161,11 @@ impl Identity {
     pub fn server_config(&self) -> Result<Arc<ServerConfig>, String> {
         let key = self.key.as_ref().ok_or("identità non valida")?.clone_key();
         let mut cfg = ServerConfig::builder_with_provider(provider())
-            .with_safe_default_protocol_versions().map_err(|e| e.to_string())?
-            .with_no_client_auth().with_single_cert(self.chain.clone(), key).map_err(|e| e.to_string())?;
+            .with_safe_default_protocol_versions()
+            .map_err(|e| e.to_string())?
+            .with_no_client_auth()
+            .with_single_cert(self.chain.clone(), key)
+            .map_err(|e| e.to_string())?;
         cfg.alpn_protocols = vec![b"http/1.1".to_vec()];
         Ok(Arc::new(cfg))
     }
@@ -145,9 +177,12 @@ impl Identity {
         let verifier = Arc::new(Recorder { seen: seen.clone(), provider: provider() });
         let key = self.key.as_ref().ok_or("identità non valida")?.clone_key();
         let mut cfg = ClientConfig::builder_with_provider(provider())
-            .with_safe_default_protocol_versions().map_err(|e| e.to_string())?
-            .dangerous().with_custom_certificate_verifier(verifier)
-            .with_client_auth_cert(self.chain.clone(), key).map_err(|e| e.to_string())?;
+            .with_safe_default_protocol_versions()
+            .map_err(|e| e.to_string())?
+            .dangerous()
+            .with_custom_certificate_verifier(verifier)
+            .with_client_auth_cert(self.chain.clone(), key)
+            .map_err(|e| e.to_string())?;
         cfg.alpn_protocols = vec![b"http/1.1".to_vec()];
         Ok((Arc::new(cfg), seen))
     }
@@ -160,8 +195,14 @@ struct Recorder {
 }
 
 impl ServerCertVerifier for Recorder {
-    fn verify_server_cert(&self, end_entity: &CertificateDer<'_>, _i: &[CertificateDer<'_>], _n: &ServerName<'_>,
-                          _o: &[u8], _now: UnixTime) -> Result<ServerCertVerified, rustls::Error> {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        _i: &[CertificateDer<'_>],
+        _n: &ServerName<'_>,
+        _o: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
         *self.seen.lock().unwrap() = Some(fingerprint_der(end_entity.as_ref()));
         Ok(ServerCertVerified::assertion())
     }
@@ -171,7 +212,9 @@ impl ServerCertVerifier for Recorder {
     fn verify_tls13_signature(&self, m: &[u8], c: &CertificateDer<'_>, d: &DigitallySignedStruct) -> Result<HandshakeSignatureValid, rustls::Error> {
         rustls::crypto::verify_tls13_signature(m, c, d, &self.provider.signature_verification_algorithms)
     }
-    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> { self.provider.signature_verification_algorithms.supported_schemes() }
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.provider.signature_verification_algorithms.supported_schemes()
+    }
 }
 
 #[cfg(test)]
@@ -202,15 +245,21 @@ mod tests {
         let (c, k) = (p.legacy_cache().join("cert.pem"), p.legacy_cache().join("key.pem"));
         let gen = std::process::Command::new("openssl")
             .args(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2", "-subj", "/CN=Cable", "-keyout"])
-            .arg(&k).arg("-out").arg(&c).output();
-        if !gen.map(|o| o.status.success()).unwrap_or(false) { eprintln!("openssl non disponibile: test saltato"); return; }
+            .arg(&k)
+            .arg("-out")
+            .arg(&c)
+            .output();
+        if !gen.map(|o| o.status.success()).unwrap_or(false) {
+            eprintln!("openssl non disponibile: test saltato");
+            return;
+        }
         let der = std::process::Command::new("openssl").args(["x509", "-outform", "DER", "-in"]).arg(&c).output().unwrap().stdout;
         let i = Identity::load(&p);
         assert_eq!(i.stato, "ok", "{}", i.errore);
         assert_eq!(i.origine, "importata-v3");
         assert_eq!(i.fingerprint, fingerprint_der(&der));
-        i.server_config().unwrap();       // la chiave RSA è usabile per firmare in TLS
-        assert!(k.exists());              // l'originale non viene toccato
+        i.server_config().unwrap(); // la chiave RSA è usabile per firmare in TLS
+        assert!(k.exists()); // l'originale non viene toccato
     }
 
     #[test]

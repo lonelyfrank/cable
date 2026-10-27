@@ -7,17 +7,19 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::time::{Duration, Instant};
 
-fn s(p: &std::path::Path) -> String { p.to_string_lossy().into_owned() }
+fn s(p: &std::path::Path) -> String {
+    p.to_string_lossy().into_owned()
+}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn discovery_register_both_ways() {
     let mut r = Rig::new();
     let (a, b) = (r.engine("sorgente").await, r.engine("destinazione").await);
     pair(&a, &b).await;
-    assert!(a.sh.registry.get(&b.sh.fingerprint()).unwrap().verified);       // certificato visto e coerente
+    assert!(a.sh.registry.get(&b.sh.fingerprint()).unwrap().verified); // certificato visto e coerente
     let peer = wait_for(|| async { b.sh.registry.get(&a.sh.fingerprint()) }, 5.0).await;
     assert_eq!(peer.alias, "sorgente");
-    assert!(!peer.verified);                                                 // b non ha mai visto il certificato di a
+    assert!(!peer.verified); // b non ha mai visto il certificato di a
     r.stop_all().await;
 }
 
@@ -67,7 +69,7 @@ async fn partial_selection_makes_job_partial_and_folders_keep_structure() {
     let pick: Vec<String> = req["file"].as_array().unwrap().iter().filter(|f| f["nome"] != "b.txt").map(|f| f["id"].as_str().unwrap().to_string()).collect();
     b.decidi(req["id"].as_str().unwrap(), Some(pick));
     let j = wait_job(&a, &jid, 10.0).await;
-    assert_eq!(j["stato"], "parziale", "{j}");                            // mai «completato» se il ricevente ne ha accettati solo alcuni
+    assert_eq!(j["stato"], "parziale", "{j}"); // mai «completato» se il ricevente ne ha accettati solo alcuni
     assert_eq!(listing(&inbox(&b)), ["a.txt", "c.txt"]);
     // cartella
     make(&r, "album/uno.txt", b"1");
@@ -87,10 +89,24 @@ async fn pin_flow_wrong_then_right_and_cancel_at_prompt() {
     let fp = b.sh.fingerprint();
     b.imposta_pin(Some("424242"));
     let jid = a.invia(&fp, &[s(&make(&r, "p.txt", b"pin"))], None).unwrap();
-    let j = wait_for(|| async { let j = job(&a, &jid); (j["stato"] == "pin").then_some(j) }, 10.0).await;
+    let j = wait_for(
+        || async {
+            let j = job(&a, &jid);
+            (j["stato"] == "pin").then_some(j)
+        },
+        10.0,
+    )
+    .await;
     assert_eq!(j["pin_errato"], false);
     assert!(a.sender.fornisci_pin(&jid, "000000"));
-    let j = wait_for(|| async { let j = job(&a, &jid); (j["stato"] == "pin" && j["pin_errato"] == true).then_some(j) }, 10.0).await;
+    let j = wait_for(
+        || async {
+            let j = job(&a, &jid);
+            (j["stato"] == "pin" && j["pin_errato"] == true).then_some(j)
+        },
+        10.0,
+    )
+    .await;
     assert_eq!(j["pin_errato"], true);
     assert!(a.sender.fornisci_pin(&jid, "424242"));
     accept_when_pending(&b, None).await;
@@ -121,7 +137,7 @@ async fn cancel_during_large_transfer_stops_io_and_cleans_up() {
     assert_eq!(wait_job(&a, &jid, 10.0).await["stato"], "annullato");
     assert!(t0.elapsed() < Duration::from_secs(5));
     wait_for(|| async { matches!(b.receiver.snapshot().0[0]["stato"].as_str().unwrap(), "annullata" | "parziale").then_some(()) }, 10.0).await;
-    wait_for(|| async { listing(&inbox(&b)).is_empty().then_some(()) }, 10.0).await;     // nessun parziale né file finale
+    wait_for(|| async { listing(&inbox(&b)).is_empty().then_some(()) }, 10.0).await; // nessun parziale né file finale
     r.stop_all().await;
 }
 
@@ -198,9 +214,9 @@ async fn source_changes_during_upload_is_detected_midway() {
     let j = wait_job(&a, &jid, 60.0).await;
     assert_eq!(j["stato"], "errore", "{j}");
     assert!(j["file"][0]["errore"].as_str().unwrap().contains("cambiato"), "{j}");
-    assert!(j["inviati"].as_u64().unwrap() < 400 * 1024 * 1024);                 // interrotto prima della fine
+    assert!(j["inviati"].as_u64().unwrap() < 400 * 1024 * 1024); // interrotto prima della fine
     wait_for(|| async { (b.receiver.snapshot().0[0]["file"][0]["stato"] == "attesa").then_some(()) }, 10.0).await;
-    assert!(listing(&inbox(&b)).is_empty());                                     // il destinatario non ha salvato nulla
+    assert!(listing(&inbox(&b)).is_empty()); // il destinatario non ha salvato nulla
     r.stop_all().await;
 }
 
@@ -229,9 +245,25 @@ async fn identity_mismatch_unreachable_and_hostile_clients() {
     raw.write_all(&[0u8, 255].repeat(50)).await.unwrap();
     let big = json!({"x": "y".repeat(9 * 1024 * 1024)});
     // il server risponde 413 e chiude senza leggere il corpo: il client vede 413 oppure l'errore di scrittura
-    if let Ok((st, _, _)) = json_request(a.sh.client_tls().unwrap(), "127.0.0.1", b.port(), hyper::Method::POST, "/api/localsend/v2/prepare-upload", Some(&big), Duration::from_secs(20), None).await { assert_eq!(st, 413) }
-    assert!(b.receiver.snapshot().0.as_array().unwrap().is_empty());          // nessuna richiesta creata
-    let (st, v, fp) = json_request(a.sh.client_tls().unwrap(), "127.0.0.1", b.port(), hyper::Method::GET, "/api/localsend/v2/info", None, Duration::from_secs(5), None).await.unwrap();
+    if let Ok((st, _, _)) = json_request(
+        a.sh.client_tls().unwrap(),
+        "127.0.0.1",
+        b.port(),
+        hyper::Method::POST,
+        "/api/localsend/v2/prepare-upload",
+        Some(&big),
+        Duration::from_secs(20),
+        None,
+    )
+    .await
+    {
+        assert_eq!(st, 413)
+    }
+    assert!(b.receiver.snapshot().0.as_array().unwrap().is_empty()); // nessuna richiesta creata
+    let (st, v, fp) =
+        json_request(a.sh.client_tls().unwrap(), "127.0.0.1", b.port(), hyper::Method::GET, "/api/localsend/v2/info", None, Duration::from_secs(5), None)
+            .await
+            .unwrap();
     assert_eq!((st, fp), (200, b.sh.fingerprint()));
     assert_eq!(v.unwrap()["alias"], "b");
     // destinatario spento
@@ -251,7 +283,9 @@ async fn no_auto_accept_even_with_favorite_fingerprint() {
                       "files": {"i": {"id": "i", "fileName": "evil.txt", "size": 1, "fileType": "text/plain"}}});
     let tls = c.sh.client_tls().unwrap();
     let port = b.port();
-    let h = tokio::spawn(async move { json_request(tls, "127.0.0.1", port, hyper::Method::POST, "/api/localsend/v2/prepare-upload", Some(&body), Duration::from_secs(20), None).await });
+    let h = tokio::spawn(async move {
+        json_request(tls, "127.0.0.1", port, hyper::Method::POST, "/api/localsend/v2/prepare-upload", Some(&body), Duration::from_secs(20), None).await
+    });
     let req = wait_for(|| async { b.receiver.snapshot().0.as_array().unwrap().iter().find(|i| i["stato"] == "attesa").cloned() }, 10.0).await;
     assert!(listing(&inbox(&b)).is_empty());
     b.decidi(req["id"].as_str().unwrap(), Some(vec![]));
@@ -296,10 +330,14 @@ async fn wizard_code_verification_flow() {
     pc.verifica_inizia(&fp).unwrap();
     // il «telefono» vede il messaggio con il codice e lo accetta
     accept_when_pending(&phone, None).await;
-    let code = wait_for(|| async {
-        let m = phone.receiver.snapshot().1;
-        m.as_array().unwrap().first().map(|x| x["testo"].as_str().unwrap().to_string())
-    }, 10.0).await;
+    let code = wait_for(
+        || async {
+            let m = phone.receiver.snapshot().1;
+            m.as_array().unwrap().first().map(|x| x["testo"].as_str().unwrap().to_string())
+        },
+        10.0,
+    )
+    .await;
     let code = code.split("codice di verifica: ").nth(1).unwrap()[..6].to_string();
     wait_for(|| async { (pc.snapshot()["wizard"]["invio"]["stato"] == "completato").then_some(()) }, 10.0).await;
     assert!(!pc.snapshot()["invii"].to_string().contains("codice di verifica"), "l'invio del codice non deve comparire fra i trasferimenti");
@@ -308,14 +346,14 @@ async fn wizard_code_verification_flow() {
     let wrong = if code == "000000" { "111111" } else { "000000" };
     let r1 = pc.verifica_conferma(wrong);
     assert_eq!((r1["ok"].as_bool().unwrap(), r1["motivo"].as_str().unwrap()), (false, "wrong"));
-    assert!(!pc.sh.settings.preferiti().contains_key(&fp));                  // nulla è stato salvato
-    // codice giusto: dispositivo confermato e preferito
+    assert!(!pc.sh.settings.preferiti().contains_key(&fp)); // nulla è stato salvato
+                                                            // codice giusto: dispositivo confermato e preferito
     let ok = pc.verifica_conferma(&code);
     assert_eq!(ok["ok"], true, "{ok}");
     let d = pc.snapshot()["dispositivi"].as_array().unwrap().iter().find(|d| d["fp"] == json!(fp)).cloned().unwrap();
     assert_eq!((d["preferito"].clone(), d["confermato"].clone(), d["verificato"].clone()), (json!(true), json!(true), json!(true)));
-    assert_eq!(pc.verifica_conferma(&code)["motivo"], "missing");           // il codice vale una volta sola
-    // prova inversa: il telefono manda un testo al PC e il PC lo accetta
+    assert_eq!(pc.verifica_conferma(&code)["motivo"], "missing"); // il codice vale una volta sola
+                                                                  // prova inversa: il telefono manda un testo al PC e il PC lo accetta
     assert!(pc.wizard_prova(&fp));
     assert_eq!(pc.snapshot()["wizard"]["prova_ricevuta"], false);
     let jid = phone.invia(&pc.sh.fingerprint(), &[], Some("prova dal telefono".into())).unwrap();
@@ -333,11 +371,13 @@ async fn wizard_five_wrong_codes_lock_until_new_code() {
     let (pc, phone) = (r.engine("pc").await, r.engine("telefono").await);
     pair(&pc, &phone).await;
     let fp = phone.sh.fingerprint();
-    assert!(pc.verifica_inizia("0".repeat(64).as_str()).is_err());           // dispositivo non scelto/sconosciuto
+    assert!(pc.verifica_inizia("0".repeat(64).as_str()).is_err()); // dispositivo non scelto/sconosciuto
     pc.verifica_inizia(&fp).unwrap();
     for i in 0..5 {
         let v = pc.verifica_conferma("999999");
-        if i < 5 { assert_eq!(v["motivo"], "wrong"); }
+        if i < 5 {
+            assert_eq!(v["motivo"], "wrong");
+        }
     }
     assert_eq!(pc.verifica_conferma("999999")["motivo"], "attempts");
     assert!(!pc.sh.settings.preferiti().contains_key(&fp));
@@ -405,8 +445,26 @@ async fn snapshot_is_complete_for_the_ui_and_has_no_secrets() {
     let a = r.engine("a").await;
     a.imposta_pin(Some("987654"));
     let s: Value = a.snapshot();
-    for k in ["versione", "utente", "conf", "pin_impostato", "dispositivi", "ricezioni", "messaggi", "invii", "server", "identita", "rete",
-              "recenti", "componenti", "avvisi", "migrazione", "adb", "schermo", "wizard"] {
+    for k in [
+        "versione",
+        "utente",
+        "conf",
+        "pin_impostato",
+        "dispositivi",
+        "ricezioni",
+        "messaggi",
+        "invii",
+        "server",
+        "identita",
+        "rete",
+        "recenti",
+        "componenti",
+        "avvisi",
+        "migrazione",
+        "adb",
+        "schermo",
+        "wizard",
+    ] {
         assert!(s.get(k).is_some(), "manca {k}");
     }
     let txt = s.to_string();
@@ -459,7 +517,7 @@ async fn retry_skips_files_that_vanished_and_refuses_when_nothing_is_left() {
     pair(&a, &b).await;
     let f1 = make(&r, "uno.txt", b"1");
     let jid = a.invia(&b.sh.fingerprint(), &[s(&f1)], None).unwrap();
-    accept_when_pending(&b, Some(vec![])).await;                  // il destinatario rifiuta
+    accept_when_pending(&b, Some(vec![])).await; // il destinatario rifiuta
     let j = wait_job(&a, &jid, 10.0).await;
     assert_eq!(j["stato"], "rifiutato", "{j}");
     assert_eq!(j["riprovabili"], 1, "dopo un rifiuto si può ripetere l'invio");
@@ -497,11 +555,12 @@ async fn refresh_tells_reachable_from_merely_seen() {
     let (a, b) = (r.engine("a").await, r.engine("b").await);
     pair(&a, &b).await;
     let fp = b.sh.fingerprint();
-    let find = |e: &std::sync::Arc<pixelhub_engine::Engine>| e.snapshot()["dispositivi"].as_array().unwrap().iter().find(|d| d["fp"] == json!(fp)).cloned().unwrap();
+    let find =
+        |e: &std::sync::Arc<pixelhub_engine::Engine>| e.snapshot()["dispositivi"].as_array().unwrap().iter().find(|d| d["fp"] == json!(fp)).cloned().unwrap();
     assert_eq!(a.aggiorna().await, 1);
     let d = find(&a);
     assert_eq!((d["vicino"].clone(), d["raggiungibile"].clone()), (json!(true), json!(true)));
-    b.stop().await;                                              // b sparisce senza annunciarlo
+    b.stop().await; // b sparisce senza annunciarlo
     assert_eq!(a.aggiorna().await, 0);
     let d = find(&a);
     assert_eq!((d["vicino"].clone(), d["raggiungibile"].clone()), (json!(true), json!(false)), "visto di recente ma non raggiungibile: due fatti distinti");
@@ -525,10 +584,13 @@ async fn resume_event_expires_presence_and_is_debounced() {
     a.sh.registry.upsert(&info, "192.168.77.5", "multicast", None);
     info["fingerprint"] = json!("D".repeat(64));
     a.sh.registry.upsert(&info, "192.168.77.6", "manuale", None);
-    let near = |e: &std::sync::Arc<pixelhub_engine::Engine>| e.snapshot()["dispositivi"].as_array().unwrap().iter().filter(|d| d["vicino"] == json!(true)).count();
+    let near =
+        |e: &std::sync::Arc<pixelhub_engine::Engine>| e.snapshot()["dispositivi"].as_array().unwrap().iter().filter(|d| d["vicino"] == json!(true)).count();
     assert_eq!(near(&a), 2);
     // una raffica di eventi (come fa NetworkManager) vale come un solo cambio
-    for _ in 0..5 { a.discovery.notifica(NetEvent::Resume); }
+    for _ in 0..5 {
+        a.discovery.notifica(NetEvent::Resume);
+    }
     wait_for(|| async { (a.discovery.cambi.load(std::sync::atomic::Ordering::Relaxed) >= 1).then_some(()) }, 8.0).await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert_eq!(a.discovery.cambi.load(std::sync::atomic::Ordering::Relaxed), 1);
@@ -549,7 +611,7 @@ async fn network_drop_mid_transfer_is_an_interruption_with_per_file_outcome() {
     let jid = a.invia(&b.sh.fingerprint(), &[s(&f1), s(&grande), s(&f3)], None).unwrap();
     accept_when_pending(&b, None).await;
     wait_for(|| async { (b.receiver.snapshot().0[0]["byte"].as_u64().unwrap() > 1024 * 1024).then_some(()) }, 20.0).await;
-    b.stop().await;                                              // il destinatario sparisce di colpo (rete caduta, app chiusa)
+    b.stop().await; // il destinatario sparisce di colpo (rete caduta, app chiusa)
     let j = wait_job(&a, &jid, 30.0).await;
     assert!(["interrotto", "parziale"].contains(&j["stato"].as_str().unwrap()), "{j}");
     assert_eq!(j["file"][0]["stato"], "fatto", "{j}");

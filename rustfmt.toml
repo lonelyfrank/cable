@@ -1,0 +1,3 @@
+# Stile compatto già in uso nel codice: righe larghe, blocchi brevi su una riga
+max_width = 160
+use_small_heuristics = "Max"

@@ -35,9 +35,16 @@ pub fn risolvi(args: &[String], cwd: &Path) -> Vec<PathBuf> {
     let mut solo_file = false;
     let mut out = Vec::new();
     for a in args {
-        if !solo_file && a == "--" { solo_file = true; continue; }
-        if !solo_file && a.starts_with("--") { continue; }
-        if a.is_empty() { continue; }
+        if !solo_file && a == "--" {
+            solo_file = true;
+            continue;
+        }
+        if !solo_file && a.starts_with("--") {
+            continue;
+        }
+        if a.is_empty() {
+            continue;
+        }
         let p = match a.strip_prefix("file://") {
             Some(rest) => {
                 let rest = rest.strip_prefix("localhost").unwrap_or(rest);
@@ -46,7 +53,7 @@ pub fn risolvi(args: &[String], cwd: &Path) -> Vec<PathBuf> {
             None => PathBuf::from(a),
         };
         let p = if p.is_absolute() { p } else { cwd.join(p) };
-        out.push(p.components().collect());      // toglie i «.» senza risolvere «..» (che con i link simbolici cambierebbe file)
+        out.push(p.components().collect()); // toglie i «.» senza risolvere «..» (che con i link simbolici cambierebbe file)
     }
     out
 }
@@ -55,12 +62,16 @@ impl Coda {
     /// `args` esclude argv[0]. Restituisce l'id assegnato, o `None` se non c'era alcun file.
     pub fn accoda(&self, args: &[String], cwd: &Path) -> Option<u64> {
         let tutti = risolvi(args, cwd);
-        if tutti.is_empty() { return None; }
+        if tutti.is_empty() {
+            return None;
+        }
         let (mut paths, mut mancanti) = (Vec::new(), Vec::new());
         for p in tutti {
             let s = p.to_string_lossy().into_owned();
             let target = if p.symlink_metadata().is_ok() { &mut paths } else { &mut mancanti };
-            if !target.contains(&s) { target.push(s); }
+            if !target.contains(&s) {
+                target.push(s);
+            }
         }
         let mut g = self.inner.lock().unwrap();
         g.prossimo += 1;
@@ -70,20 +81,28 @@ impl Coda {
     }
 
     /// Richieste non ancora confermate, in ordine di arrivo. Non le consuma.
-    pub fn in_attesa(&self) -> Vec<Richiesta> { self.inner.lock().unwrap().attesa.clone() }
+    pub fn in_attesa(&self) -> Vec<Richiesta> {
+        self.inner.lock().unwrap().attesa.clone()
+    }
 
     /// Rimuove le richieste confermate; id sconosciuti o già confermati sono ignorati.
-    pub fn conferma(&self, ids: &[u64]) { self.inner.lock().unwrap().attesa.retain(|r| !ids.contains(&r.id)); }
+    pub fn conferma(&self, ids: &[u64]) {
+        self.inner.lock().unwrap().attesa.retain(|r| !ids.contains(&r.id));
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn v(a: &[&str]) -> Vec<String> { a.iter().map(|s| s.to_string()).collect() }
+    fn v(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
     fn dir_con(nomi: &[&str]) -> tempfile::TempDir {
         let d = tempfile::tempdir().unwrap();
-        for n in nomi { std::fs::write(d.path().join(n), b"x").unwrap(); }
+        for n in nomi {
+            std::fs::write(d.path().join(n), b"x").unwrap();
+        }
         d
     }
 
@@ -125,7 +144,7 @@ mod tests {
     fn opzioni_ignorate_e_doppio_trattino() {
         let d = dir_con(&["--strano.txt", "a.txt"]);
         let c = Coda::default();
-        assert_eq!(c.accoda(&v(&["--background"]), d.path()), None);          // nessun file: nessuna richiesta
+        assert_eq!(c.accoda(&v(&["--background"]), d.path()), None); // nessun file: nessuna richiesta
         assert_eq!(c.accoda(&[], d.path()), None);
         c.accoda(&v(&["--background", "a.txt", "--", "--strano.txt"]), d.path());
         assert_eq!(c.in_attesa()[0].paths.len(), 2);
@@ -155,7 +174,7 @@ mod tests {
         let r = c.in_attesa();
         assert_eq!(r.len(), 1);
         assert!(r[0].paths[0].ends_with("2"));
-        c.conferma(&[1, 99]);                       // doppia conferma e id sconosciuto: nessun effetto
+        c.conferma(&[1, 99]); // doppia conferma e id sconosciuto: nessun effetto
         assert_eq!(c.in_attesa().len(), 1);
         c.conferma(&[2]);
         assert!(c.in_attesa().is_empty());

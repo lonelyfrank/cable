@@ -13,7 +13,12 @@ async fn main() {
     let t0 = Instant::now();
     let mut n = 0;
     while t0.elapsed() < Duration::from_secs(15) {
-        if let Ok(Some(ev)) = tokio::time::timeout(Duration::from_millis(500), rx.recv()).await { n += 1; if n <= 10 { println!("{:>5.1}s evento: {ev:?}", t0.elapsed().as_secs_f32()); } }
+        if let Ok(Some(ev)) = tokio::time::timeout(Duration::from_millis(500), rx.recv()).await {
+            n += 1;
+            if n <= 10 {
+                println!("{:>5.1}s evento: {ev:?}", t0.elapsed().as_secs_f32());
+            }
+        }
     }
     println!("stato D-Bus: {} (1 = in ascolto, 2 = non disponibile); eventi ricevuti: {n}", status.load(Ordering::Relaxed));
     cancel.cancel();

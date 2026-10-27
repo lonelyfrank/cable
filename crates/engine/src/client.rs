@@ -16,7 +16,9 @@ use tokio_rustls::TlsConnector;
 
 pub type Body = BoxBody<Bytes, std::io::Error>;
 
-pub fn full(b: impl Into<Bytes>) -> Body { Full::new(b.into()).map_err(|never| match never {}).boxed() }
+pub fn full(b: impl Into<Bytes>) -> Body {
+    Full::new(b.into()).map_err(|never| match never {}).boxed()
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClientError {
@@ -38,7 +40,9 @@ pub enum ClientError {
 
 impl ClientError {
     /// Messaggio comprensibile per l'utente, senza indirizzo.
-    pub fn message(&self) -> String { self.describe("", 0) }
+    pub fn message(&self) -> String {
+        self.describe("", 0)
+    }
 
     /// Messaggio per l'utente: prima il fatto osservato, poi le cause possibili (mai una sola causa presentata come certa).
     pub fn describe(&self, ip: &str, port: u16) -> String {
@@ -54,11 +58,17 @@ impl ClientError {
             ClientError::Io(e) => format!("Non raggiungibile: {e}"),
         }
     }
-    pub fn fatal_for_session(&self) -> bool { !matches!(self, ClientError::Identity) }
+    pub fn fatal_for_session(&self) -> bool {
+        !matches!(self, ClientError::Identity)
+    }
     /// Rete caduta o connessione persa durante lo scambio (non: dispositivo mai raggiunto).
-    pub fn is_interruption(&self) -> bool { matches!(self, ClientError::Closed | ClientError::Http(_) | ClientError::Io(_) | ClientError::Timeout) }
+    pub fn is_interruption(&self) -> bool {
+        matches!(self, ClientError::Closed | ClientError::Http(_) | ClientError::Io(_) | ClientError::Timeout)
+    }
     /// Il dispositivo non si è proprio raggiunto.
-    pub fn is_unreachable(&self) -> bool { matches!(self, ClientError::ConnectTimeout | ClientError::Refused | ClientError::Unreachable) }
+    pub fn is_unreachable(&self) -> bool {
+        matches!(self, ClientError::ConnectTimeout | ClientError::Refused | ClientError::Unreachable)
+    }
 }
 
 fn map_io(e: std::io::Error) -> ClientError {
@@ -78,22 +88,38 @@ pub struct Client {
     pub fp: String,
     driver: JoinHandle<()>,
 }
-impl Drop for Client { fn drop(&mut self) { self.driver.abort(); } }
+impl Drop for Client {
+    fn drop(&mut self) {
+        self.driver.abort();
+    }
+}
 
 /// Apre una connessione TLS e confronta l'impronta *effettiva* con quella attesa. Nessun ripiego su HTTP.
 pub async fn connect(tls: ClientTls, host: &str, port: u16, t: Duration, expected: Option<&str>) -> Result<Client, ClientError> {
     let (cfg, seen) = tls;
-    let tcp = timeout(t, TcpStream::connect((host, port))).await.map_err(|_| ClientError::ConnectTimeout)?.map_err(|e| if e.kind() == std::io::ErrorKind::TimedOut { ClientError::ConnectTimeout } else { map_io(e) })?;
+    let tcp = timeout(t, TcpStream::connect((host, port))).await.map_err(|_| ClientError::ConnectTimeout)?.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::TimedOut {
+            ClientError::ConnectTimeout
+        } else {
+            map_io(e)
+        }
+    })?;
     let _ = tcp.set_nodelay(true);
     let name = ServerName::try_from(host.to_string()).map_err(|e| ClientError::Tls(e.to_string()))?;
-    let stream = timeout(t, TlsConnector::from(cfg).connect(name, tcp)).await.map_err(|_| ClientError::ConnectTimeout)?
-        .map_err(|e| match e.kind() { std::io::ErrorKind::InvalidData | std::io::ErrorKind::Other => ClientError::Tls(e.to_string()), _ => map_io(e) })?;
+    let stream = timeout(t, TlsConnector::from(cfg).connect(name, tcp)).await.map_err(|_| ClientError::ConnectTimeout)?.map_err(|e| match e.kind() {
+        std::io::ErrorKind::InvalidData | std::io::ErrorKind::Other => ClientError::Tls(e.to_string()),
+        _ => map_io(e),
+    })?;
     let actual = seen.lock().unwrap().clone().ok_or_else(|| ClientError::Tls("nessun certificato".into()))?;
     if let Some(e) = expected {
-        if !ct_eq(actual.as_bytes(), e.to_uppercase().as_bytes()) { return Err(ClientError::Identity); }
+        if !ct_eq(actual.as_bytes(), e.to_uppercase().as_bytes()) {
+            return Err(ClientError::Identity);
+        }
     }
     let (tx, conn) = http1::handshake(TokioIo::new(stream)).await.map_err(|e| ClientError::Http(e.to_string()))?;
-    let driver = tokio::spawn(async move { let _ = conn.await; });
+    let driver = tokio::spawn(async move {
+        let _ = conn.await;
+    });
     Ok(Client { tx, fp: actual, driver })
 }
 
@@ -101,8 +127,7 @@ impl Client {
     pub async fn send(&mut self, req: Request<Body>) -> Result<(u16, Option<Value>), ClientError> {
         let resp = self.tx.send_request(req).await.map_err(|e| ClientError::Http(e.to_string()))?;
         let status = resp.status().as_u16();
-        let bytes = Limited::new(resp.into_body(), 8 * 1024 * 1024).collect().await
-            .map_err(|e| ClientError::Http(e.to_string()))?.to_bytes();
+        let bytes = Limited::new(resp.into_body(), 8 * 1024 * 1024).collect().await.map_err(|e| ClientError::Http(e.to_string()))?.to_bytes();
         Ok((status, serde_json::from_slice(&bytes).ok()))
     }
 }
@@ -110,14 +135,24 @@ impl Client {
 pub fn json_req(host: &str, port: u16, method: Method, path: &str, body: Option<&Value>) -> Request<Body> {
     let data = body.map(|b| serde_json::to_vec(b).unwrap()).unwrap_or_default();
     let mut b = Request::builder().method(method).uri(path).header("Host", format!("{host}:{port}"));
-    if body.is_some() { b = b.header("Content-Type", "application/json"); }
+    if body.is_some() {
+        b = b.header("Content-Type", "application/json");
+    }
     b.header("Content-Length", data.len()).body(full(data)).unwrap()
 }
 
 /// Restituisce (stato, json, impronta effettiva).
 #[allow(clippy::too_many_arguments)]
-pub async fn json_request(tls: ClientTls, host: &str, port: u16, method: Method, path: &str, body: Option<&Value>,
-                          t: Duration, expected: Option<&str>) -> Result<(u16, Option<Value>, String), ClientError> {
+pub async fn json_request(
+    tls: ClientTls,
+    host: &str,
+    port: u16,
+    method: Method,
+    path: &str,
+    body: Option<&Value>,
+    t: Duration,
+    expected: Option<&str>,
+) -> Result<(u16, Option<Value>, String), ClientError> {
     let mut c = connect(tls, host, port, t, expected).await?;
     let fp = c.fp.clone();
     let (st, v) = timeout(t, c.send(json_req(host, port, method, path, body))).await.map_err(|_| ClientError::Timeout)??;
@@ -127,9 +162,16 @@ pub async fn json_request(tls: ClientTls, host: &str, port: u16, method: Method,
 /// Prova **in parallelo** tutti gli indirizzi candidati e restituisce la prima connessione la cui impronta TLS è quella attesa.
 /// Così un indirizzo vecchio (DHCP cambiato, altra interfaccia) non fa aspettare quello giusto. Se nessuno funziona
 /// restituisce l'errore più significativo: identità diversa > rifiuto > nessun percorso > nessuna risposta.
-pub async fn connect_any(make_tls: &(dyn Fn() -> Result<ClientTls, String> + Sync), cands: &[(String, u16)], t: Duration, expected: &str) -> Result<(Client, String, u16), ClientError> {
+pub async fn connect_any(
+    make_tls: &(dyn Fn() -> Result<ClientTls, String> + Sync),
+    cands: &[(String, u16)],
+    t: Duration,
+    expected: &str,
+) -> Result<(Client, String, u16), ClientError> {
     use futures_util::stream::{FuturesUnordered, StreamExt};
-    if cands.is_empty() { return Err(ClientError::Unreachable); }
+    if cands.is_empty() {
+        return Err(ClientError::Unreachable);
+    }
     // ogni tentativo ha la SUA configurazione TLS: l'impronta vista è registrata lì dentro e va letta
     // solo dalla connessione che l'ha prodotta (una configurazione condivisa permetterebbe di scambiare le identità)
     let mut set = FuturesUnordered::new();
@@ -143,8 +185,15 @@ pub async fn connect_any(make_tls: &(dyn Fn() -> Result<ClientTls, String> + Syn
         match r {
             Ok(v) => return Ok(v),
             Err(e) => {
-                let rank = |e: &ClientError| match e { ClientError::Identity => 4, ClientError::Refused => 3, ClientError::Unreachable => 2, _ => 1 };
-                if worst.as_ref().is_none_or(|w| rank(&e) > rank(w)) { worst = Some(e); }
+                let rank = |e: &ClientError| match e {
+                    ClientError::Identity => 4,
+                    ClientError::Refused => 3,
+                    ClientError::Unreachable => 2,
+                    _ => 1,
+                };
+                if worst.as_ref().is_none_or(|w| rank(&e) > rank(w)) {
+                    worst = Some(e);
+                }
             }
         }
     }

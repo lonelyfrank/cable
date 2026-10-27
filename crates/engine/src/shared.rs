@@ -24,7 +24,7 @@ pub struct Shared {
 
 impl Shared {
     pub fn new(paths: Paths, port: u16) -> Arc<Shared> {
-        let migrazione = crate::migrate::run(&paths);        // prima di leggere impostazioni e identità
+        let migrazione = crate::migrate::run(&paths); // prima di leggere impostazioni e identità
         let settings = Arc::new(Settings::load(&paths));
         settings.avvisi.lock().unwrap().extend(migrazione.avvisi);
         let identity = Identity::load(&paths);
@@ -35,22 +35,35 @@ impl Shared {
         Arc::new(Shared { paths, settings, identity: RwLock::new(identity), registry, bus, notifier, port: AtomicU16::new(port) })
     }
 
-    pub fn port(&self) -> u16 { self.port.load(Ordering::Relaxed) }
-    pub fn set_port(&self, p: u16) { self.port.store(p, Ordering::Relaxed); }
-    pub fn fingerprint(&self) -> String { self.identity.read().unwrap().fingerprint.clone() }
+    pub fn port(&self) -> u16 {
+        self.port.load(Ordering::Relaxed)
+    }
+    pub fn set_port(&self, p: u16) {
+        self.port.store(p, Ordering::Relaxed);
+    }
+    pub fn fingerprint(&self) -> String {
+        self.identity.read().unwrap().fingerprint.clone()
+    }
 
     pub fn info(&self, with_port: bool) -> Value {
         let mut d = json!({"alias": self.settings.str("nome_pc"), "version": "2.0", "deviceModel": "Linux",
                            "deviceType": "desktop", "fingerprint": self.fingerprint(), "download": false});
-        if with_port { d["port"] = json!(self.port()); d["protocol"] = json!("https"); }
+        if with_port {
+            d["port"] = json!(self.port());
+            d["protocol"] = json!("https");
+        }
         d
     }
 
-    pub fn client_tls(&self) -> Result<ClientTls, String> { self.identity.read().unwrap().client_config() }
+    pub fn client_tls(&self) -> Result<ClientTls, String> {
+        self.identity.read().unwrap().client_config()
+    }
 
     pub fn on_register(&self, body: &Value, ip: IpAddr) {
         if let Some(p) = parse_peer_info(body) {
-            if p.fp != self.fingerprint() { self.registry.upsert(body, &ip.to_string(), "incoming", None); }
+            if p.fp != self.fingerprint() {
+                self.registry.upsert(body, &ip.to_string(), "incoming", None);
+            }
         }
     }
 }

@@ -20,7 +20,9 @@ pub struct Report {
 }
 
 fn write_atomic(dest: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
-    if let Some(d) = dest.parent() { fs::create_dir_all(d)?; }
+    if let Some(d) = dest.parent() {
+        fs::create_dir_all(d)?;
+    }
     let tmp = dest.with_extension(format!("migrazione-{}.tmp", std::process::id()));
     {
         let mut f = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(mode).open(&tmp)?;
@@ -32,11 +34,16 @@ fn write_atomic(dest: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
 
 fn migrate_settings(p: &Paths, r: &mut Report) {
     let (old, new) = (p.old_settings_file(), p.settings_file());
-    if !old.is_file() { return; }
+    if !old.is_file() {
+        return;
+    }
     if new.exists() {
         // dati vecchi e nuovi: vincono quelli di Cable, senza fonderli alla cieca
         if !p.migration_record().exists() && fs::read(&old).ok() != fs::read(&new).ok() {
-            r.avvisi.push(format!("Esistono impostazioni sia di Pixel Hub sia di Cable: uso quelle di Cable. Le vecchie sono rimaste in {}.", p.old_config.display()));
+            r.avvisi.push(format!(
+                "Esistono impostazioni sia di Pixel Hub sia di Cable: uso quelle di Cable. Le vecchie sono rimaste in {}.",
+                p.old_config.display()
+            ));
         }
         return;
     }
@@ -45,7 +52,7 @@ fn migrate_settings(p: &Paths, r: &mut Report) {
         let mut v: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
         let obj = v.as_object_mut().ok_or("formato non valido")?;
         if obj.get("nome_pc").and_then(Value::as_str) == Some(OLD_DEFAULT_NAME) {
-            obj.insert("nome_pc".into(), json!(default_name()));          // solo il nome predefinito, mai uno scelto dall'utente
+            obj.insert("nome_pc".into(), json!(default_name())); // solo il nome predefinito, mai uno scelto dall'utente
         }
         if !obj.get("migrato_da").is_some_and(Value::is_object) {
             obj.insert("migrato_da".into(), json!({"versione": "pixel-hub-5", "quando": chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string()}));
@@ -55,15 +62,21 @@ fn migrate_settings(p: &Paths, r: &mut Report) {
         write_atomic(&new, serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?.as_bytes(), 0o600).map_err(|e| e.to_string())
     })();
     match result {
-        Ok(()) => { r.impostazioni_copiate = true; }
-        Err(e) => r.avvisi.push(format!("Non sono riuscito a importare le impostazioni di Pixel Hub ({e}): Cable parte con i valori predefiniti. I file originali non sono stati toccati.")),
+        Ok(()) => {
+            r.impostazioni_copiate = true;
+        }
+        Err(e) => r.avvisi.push(format!(
+            "Non sono riuscito a importare le impostazioni di Pixel Hub ({e}): Cable parte con i valori predefiniti. I file originali non sono stati toccati."
+        )),
     }
 }
 
 fn migrate_identity(p: &Paths, r: &mut Report) {
     let old = p.old_identity_dir();
     let (oc, ok) = (old.join("cert.pem"), old.join("key.pem"));
-    if !oc.is_file() || !ok.is_file() { return; }
+    if !oc.is_file() || !ok.is_file() {
+        return;
+    }
     let dir = p.identity_dir();
     let (nc, nk) = (dir.join("cert.pem"), dir.join("key.pem"));
     match (nc.exists(), nk.exists()) {
@@ -100,10 +113,18 @@ pub fn run(p: &Paths) -> Report {
     migrate_identity(p, &mut r);
     if r.impostazioni_copiate || r.identita_copiata {
         let mut parts = vec![];
-        if r.impostazioni_copiate { parts.push("impostazioni, dispositivi ricordati e preferenze"); }
-        if r.identita_copiata { parts.push("identità del PC (stessa impronta: i telefoni già collegati ti riconoscono)"); }
-        r.avvisi.push(format!("Dati importati da Pixel Hub: {}. Le cartelle originali ({}, {}) non sono state modificate: restano come copia di ripristino.",
-                              parts.join(" e "), p.old_config.display(), p.old_data.display()));
+        if r.impostazioni_copiate {
+            parts.push("impostazioni, dispositivi ricordati e preferenze");
+        }
+        if r.identita_copiata {
+            parts.push("identità del PC (stessa impronta: i telefoni già collegati ti riconoscono)");
+        }
+        r.avvisi.push(format!(
+            "Dati importati da Pixel Hub: {}. Le cartelle originali ({}, {}) non sono state modificate: restano come copia di ripristino.",
+            parts.join(" e "),
+            p.old_config.display(),
+            p.old_data.display()
+        ));
         let rec = json!({"quando": chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
                          "impostazioni": r.impostazioni_copiate, "identita": r.identita_copiata,
                          "origine_config": p.old_config.to_string_lossy(), "origine_dati": p.old_data.to_string_lossy()});
@@ -126,8 +147,13 @@ mod tests {
         assert_eq!(id.stato, "ok");
         fs::create_dir_all(&p.old_config).unwrap();
         let fav = "A".repeat(64);
-        fs::write(p.old_settings_file(), json!({"schema": 4, "nome_pc": name, "tema": "scuro", "wizard_fatto": true,
-            "preferiti": {fav: {"alias": "Telefono di Anna", "ip": "192.168.1.9", "port": 53317, "confermato": true}}}).to_string()).unwrap();
+        fs::write(
+            p.old_settings_file(),
+            json!({"schema": 4, "nome_pc": name, "tema": "scuro", "wizard_fatto": true,
+            "preferiti": {fav: {"alias": "Telefono di Anna", "ip": "192.168.1.9", "port": 53317, "confermato": true}}})
+            .to_string(),
+        )
+        .unwrap();
         id.fingerprint.clone()
     }
 
@@ -187,7 +213,7 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let p = Paths::under(t.path());
         old_install(&p, "Vecchio");
-        let nuova = Identity::load(&p).fingerprint;       // Cable crea la propria identità prima della migrazione
+        let nuova = Identity::load(&p).fingerprint; // Cable crea la propria identità prima della migrazione
         let r = run(&p);
         assert!(!r.identita_copiata);
         assert!(r.avvisi.iter().any(|a| a.contains("identità di Cable")), "{:?}", r.avvisi);
