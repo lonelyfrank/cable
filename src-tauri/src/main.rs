@@ -4,18 +4,19 @@ use pixelhub_engine::paths::Paths;
 use pixelhub_engine::ui_api::{self, Host};
 use pixelhub_engine::{desktop, Engine};
 use serde_json::{json, Value};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, DragDropEvent, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_dialog::DialogExt;
 
+mod apertura;
 #[cfg(feature = "ui-test")]
 mod uitest;
 
 struct AppState {
     engine: Arc<Engine>,
     host: Arc<TauriHost>,
-    file_iniziali: Mutex<Vec<String>>,
+    aperture: apertura::Coda,
 }
 
 struct TauriHost { app: AppHandle }
@@ -40,8 +41,20 @@ async fn api(state: State<'_, AppState>, m: String, a: Option<Value>) -> Result<
     Ok(ui_api::chiama(&state.engine, &*state.host, &m, a.unwrap_or(Value::Null)).await)
 }
 
+/// Richieste di apertura non ancora confermate dalla pagina (non le consuma: vedi `apertura`).
 #[tauri::command]
-fn file_iniziali(state: State<'_, AppState>) -> Vec<String> { std::mem::take(&mut *state.file_iniziali.lock().unwrap()) }
+fn richieste_apertura(state: State<'_, AppState>) -> Vec<apertura::Richiesta> { state.aperture.in_attesa() }
+
+#[tauri::command]
+fn conferma_apertura(state: State<'_, AppState>, ids: Vec<u64>) { state.aperture.conferma(&ids); }
+
+/// Una richiesta di apertura (seconda istanza o file manager): accodata nel backend, poi la finestra
+/// viene mostrata (o ricreata) e svegliata. Il contenuto non viaggia nell'evento.
+fn apri_con_file(app: &AppHandle, args: &[String], cwd: &std::path::Path) {
+    if let Some(st) = app.try_state::<AppState>() { st.aperture.accoda(args, cwd); }
+    mostra(app);
+    let _ = app.emit("hub-apertura", ());
+}
 
 /// La finestra (e quindi WebKit, il grosso della memoria) esiste solo quando serve:
 /// in background resta in vita soltanto il motore.
@@ -172,19 +185,16 @@ fn cli() -> Option<i32> {
     None
 }
 
-fn file_args() -> Vec<String> { std::env::args().skip(1).filter(|a| !a.starts_with("--")).collect() }
-
 fn main() {
     if let Some(code) = cli() { std::process::exit(code); }
     let background = std::env::args().any(|a| a == "--background");
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            let files: Vec<String> = argv.into_iter().skip(1).filter(|a| !a.starts_with("--")).collect();
-            mostra(app);
-            if !files.is_empty() { let _ = app.emit("hub-file", json!({"paths": files})); }
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            // cwd è la directory del processo che ha chiamato, non quella di questa istanza
+            apri_con_file(app, &argv[argv.len().min(1)..], std::path::Path::new(&cwd));
         }))
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![api, file_iniziali])
+        .invoke_handler(tauri::generate_handler![api, richieste_apertura, conferma_apertura])
         .on_window_event(|window, event| {
             let app = window.app_handle();
             match event {
@@ -211,7 +221,10 @@ fn main() {
             let engine = Engine::new(Paths::system(), port, std::env::var_os("HUB_NO_MULTICAST").is_none());
             let handle = app.handle().clone();
             let host = Arc::new(TauriHost { app: handle.clone() });
-            app.manage(AppState { engine: engine.clone(), host, file_iniziali: Mutex::new(file_args()) });
+            let aperture = apertura::Coda::default();
+            let args: Vec<String> = std::env::args().skip(1).collect();
+            aperture.accoda(&args, &std::env::current_dir().unwrap_or_default());
+            app.manage(AppState { engine: engine.clone(), host, aperture });
             {
                 let (h, e) = (handle.clone(), engine.clone());
                 engine.notifier().set(Arc::new(move |k, d| notifica(&h, &e, k, d)));

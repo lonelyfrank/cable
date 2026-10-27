@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::oneshot;
 
 static PENDING: OnceLock<Mutex<HashMap<u64, oneshot::Sender<String>>>> = OnceLock::new();
@@ -203,6 +203,73 @@ async fn scenario(app: &AppHandle, a: &Arc<Engine>, shots: &PathBuf, c: &mut Che
     c.ok("il wizard si riapre da Impostazioni", until(app, "document.getElementById('wizard').classList.contains('on')", 5).await, "");
     js(app, "AZ.wizSalta(); return 1").await;
     c.ok("«Salta per ora» chiude il wizard", until(app, "!document.getElementById('wizard').classList.contains('on')", 5).await, "");
-    c.ok("nessun errore JavaScript", js(app, "return window.__errs").await == "0", "");
+    c.ok("nessun errore JavaScript (prima delle prove di apertura)", js(app, "return window.__errs").await == "0", "");
+    aperture(app, a, &peer, tmp.path(), c).await;
+    c.ok("nessun errore JavaScript (dopo le prove di apertura)", js(app, "return window.__errs").await == "0", "");
     peer.stop().await;
+}
+
+/// Richieste di apertura (CLI, file manager, seconda istanza). Si chiama `apri_con_file`, cioè ciò che fa il
+/// gestore della seconda istanza dopo aver ricevuto (argv, cwd); la consegna D-Bus del plugin non è simulata.
+async fn aperture(app: &AppHandle, a: &Arc<Engine>, peer: &Arc<Engine>, tmp: &std::path::Path, c: &mut Checks) {
+    let dir = tmp.join("cartella con spazi è ☃");
+    std::fs::create_dir_all(&dir).unwrap();
+    for n in ["uno.txt", "due è.txt", "tre.txt", "quattro.txt"] { std::fs::write(dir.join(n), b"x").unwrap(); }
+    let st = app.state::<super::AppState>();
+    let sheet = "document.getElementById('veloScelta').classList.contains('on')";
+    let n_sel = |n: usize| format!("{sheet} && sceltaPercorsi.length === {n}");
+    let chiudi = |app: &AppHandle| { let app = app.clone(); async move { js(&app, "AZ.sceltaChiudi(); return 1").await; } };
+    // nessun invio nuovo: stesso numero di lavori in uscita e di richieste viste dal destinatario rispetto a prima delle prove
+    let conta = || (peer.receiver.snapshot().0.as_array().unwrap().len(), a.sender.snapshot().as_array().unwrap().len());
+    let base = conta();
+    let nessun_invio = || conta() == base;
+
+    // finestra già pronta
+    super::apri_con_file(app, &["uno.txt".into()], &dir);
+    c.ok("seconda istanza, finestra pronta: arriva alla scelta del destinatario", until(app, &n_sel(1), 10).await, "");
+    c.ok("seconda istanza: percorso relativo risolto rispetto al chiamante",
+         js(app, "return sceltaPercorsi[0]").await == dir.join("uno.txt").to_string_lossy(), "");
+    c.ok("seconda istanza: la coda del backend è stata confermata e svuotata", until(app, "true", 1).await && { tokio::time::sleep(Duration::from_millis(300)).await; st.aperture.in_attesa().is_empty() }, "");
+    c.ok("nessun invio parte da solo", nessun_invio(), "");
+    chiudi(app).await;
+
+    // più invocazioni ravvicinate: nessuna perduta, nessun doppione
+    super::apri_con_file(app, &["uno.txt".into()], &dir);
+    super::apri_con_file(app, &["due è.txt".into(), "tre.txt".into()], &dir);
+    super::apri_con_file(app, &["uno.txt".into(), "quattro.txt".into()], &dir);
+    c.ok("più invocazioni consecutive: 4 file distinti, senza perdite né doppioni", until(app, &n_sel(4), 10).await, &js(app, "return JSON.stringify(sceltaPercorsi)").await);
+    chiudi(app).await;
+
+    // file inesistente: avviso, nessun invio
+    super::apri_con_file(app, &["sparito.txt".into()], &dir);
+    c.ok("file non più esistente: avviso e nessuna scelta del destinatario",
+         until(app, "/non trovato/.test(document.body.innerText)", 10).await && js(app, &format!("return String({sheet})")).await == "false", "");
+
+    // finestra nascosta
+    let w = app.get_webview_window("main").unwrap();
+    let _ = w.hide();
+    super::apri_con_file(app, &["tre.txt".into()], &dir);
+    c.ok("finestra nascosta: riportata in primo piano con la richiesta", until(app, &n_sel(1), 10).await && app.get_webview_window("main").map_or(false, |w| w.is_visible().unwrap_or(false)), "");
+    chiudi(app).await;
+
+    // finestra distrutta (app solo in background): la richiesta resta nel backend finché la nuova pagina non la ritira
+    let _ = app.get_webview_window("main").unwrap().destroy();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    c.ok("finestra distrutta: l'app resta viva con il motore attivo", app.get_webview_window("main").is_none(), "");
+    st.aperture.accoda(&["due è.txt".into()], &dir);                // l'evento emesso ora andrebbe perduto: nessuna pagina in ascolto
+    let _ = app.emit("hub-apertura", ());
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    c.ok("senza pagina la richiesta resta in coda", st.aperture.in_attesa().len() == 1, "");
+    super::mostra(app);                                             // la pagina nasce DOPO la richiesta
+    c.ok("pagina ricreata in ritardo: la richiesta in coda arriva comunque", until(app, "typeof S !== 'undefined' && S", 30).await && until(app, &n_sel(1), 10).await, "");
+    chiudi(app).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    c.ok("richiesta confermata: coda vuota", st.aperture.in_attesa().is_empty(), "");
+
+    // riapertura: ciò che la pagina ha già acquisito non si ripresenta
+    let _ = app.get_webview_window("main").unwrap().destroy();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    super::mostra(app);
+    c.ok("riapertura senza nuove richieste: nessun file ripresentato", until(app, "typeof S !== 'undefined' && S", 30).await && { tokio::time::sleep(Duration::from_millis(700)).await; js(app, &format!("return String({sheet})")).await == "false" }, "");
+    c.ok("nessun invio parte da solo (fine prove di apertura)", nessun_invio(), "");
 }

@@ -461,7 +461,7 @@ function accogli(percorsi, subito, dest = destinazione()) {
 /* file portati dentro Cable senza un destinatario (riga di comando, file manager, rilascio sulla finestra):
    si sceglie il destinatario qui, senza passare dalla Home */
 let sceltaPercorsi = null;
-function chiediDestinatario(percorsi) { sceltaPercorsi = (sceltaPercorsi || []).concat(percorsi); if (S) renderScelta(); }
+function chiediDestinatario(percorsi) { sceltaPercorsi = [...new Set((sceltaPercorsi || []).concat(percorsi))]; if (S) renderScelta(); }
 function renderScelta() {
   const velo = $("#veloScelta");
   if (!sceltaPercorsi) { velo.classList.remove("on"); return; }
@@ -613,6 +613,32 @@ window.hubDrop = (percorsi, x, y) => {
   chiediDestinatario(percorsi);                      // rilascio sulla finestra: scelta del destinatario
 };
 window.hubFile = percorsi => chiediDestinatario(percorsi);   // file passati da riga di comando / file manager
+
+/* Richieste di apertura (CLI, file manager, seconda istanza): la coda è nel backend. L'evento «hub-apertura» è
+   solo una sveglia; si ritirano le richieste, le si mostra, poi le si conferma per id. Un id già visto non
+   viene ripresentato anche se la conferma è ancora in volo; una richiesta mai confermata torna alla pagina
+   successiva. Niente parte da sola: si arriva sempre alla scelta del destinatario. */
+const aperteViste = new Set();
+let aperturaInCorso = false, aperturaDaRifare = false;
+async function ritiraAperture() {
+  if (aperturaInCorso) { aperturaDaRifare = true; return; }
+  aperturaInCorso = true;
+  try {
+    do {
+      aperturaDaRifare = false;
+      const reqs = await TAURI.core.invoke("richieste_apertura");
+      for (const r of reqs) {
+        if (aperteViste.has(r.id)) continue;
+        aperteViste.add(r.id);
+        if (r.paths.length) window.hubFile(r.paths);
+        if (r.mancanti.length) toast(r.mancanti.length === 1 ? `File non trovato: ${r.mancanti[0].split("/").pop()}` : `${r.mancanti.length} file non trovati`, "warn");
+      }
+      if (reqs.length) await TAURI.core.invoke("conferma_apertura", { ids: reqs.map(r => r.id) });
+    } while (aperturaDaRifare);
+  } catch (e) { api("js_error", { m: "aperture: " + e }); }
+  finally { aperturaInCorso = false; }
+}
+window.ritiraAperture = ritiraAperture;
 // trascinamento dall'app verso il desktop
 document.addEventListener("dragstart", e => {
   const f = e.target.closest?.("[data-file]"); if (!f) return;
@@ -798,11 +824,11 @@ window.addEventListener("unhandledrejection", e => { window.__errs++; api("js_er
 TAURI.event.listen("hub-stato", e => window.hubStato(e.payload));
 TAURI.event.listen("hub-drag", e => window.hubDragState(e.payload));
 TAURI.event.listen("hub-drop", e => window.hubDrop(e.payload.paths, e.payload.x, e.payload.y));
-TAURI.event.listen("hub-file", e => window.hubFile(e.payload.paths));
+TAURI.event.listen("hub-apertura", () => ritiraAperture());
 icone();
 try { const p = localStorage.getItem("hub.pagina"); if (p && document.querySelector(`.pagina[data-p="${p}"]`)) vai(p); } catch (e) {}
 api("stato").then(s => { if (s && s.versione) window.hubStato(s); });
-TAURI.core.invoke("file_iniziali").then(p => { if (p && p.length) window.hubFile(p); });
+ritiraAperture();
 document.addEventListener("keydown", e => {
   if (e.ctrlKey && /^[1-5]$/.test(e.key)) vai(["home", "schermo", "condividi", "pixel", "impostazioni"][+e.key - 1]);
 });
