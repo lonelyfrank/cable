@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>it.frank.PixelHub</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <name>Pixel Hub</name>
+  <summary>Invia e ricevi file e testi con i tuoi dispositivi via LocalSend</summary>
+  <description>
+    <p>Pixel Hub trasferisce file e testi fra Fedora e gli smartphone sulla stessa rete locale, usando il protocollo LocalSend: sul telefono basta l'app ufficiale LocalSend.</p>
+    <p>Ogni ricezione richiede una conferma esplicita, con accettazione anche parziale dei file. Funzioni Android opzionali: schermo con scrcpy e importazione delle foto via USB.</p>
+  </description>
+  <launchable type="desktop-id">it.frank.PixelHub.desktop</launchable>
+  <provides><binary>pixel-hub</binary></provides>
+  <categories><category>Network</category><category>FileTransfer</category></categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="5.0.0" date="2026-10-27"><description><p>Riscritto in Rust con Tauri: più leggero e veloce, procedura guidata di primo collegamento con verifica del telefono, preferiti, PIN, accettazione parziale.</p></description></release>
+  </releases>
+</component>

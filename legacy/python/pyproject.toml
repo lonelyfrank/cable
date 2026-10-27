@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pixel-hub"
+version = "4.0.0"
+description = "Trasferimento rapido di file e testi via LocalSend per Fedora GNOME"
+requires-python = ">=3.11"
+dependencies = ["cryptography", "PyGObject"]
+
+[project.scripts]
+pixel-hub = "pixelhub.__main__:main"
+
+[tool.setuptools]
+packages = ["pixelhub", "pixelhub.ui"]
+
+[tool.setuptools.package-data]
+"pixelhub.ui" = ["index.html", "icon.svg"]

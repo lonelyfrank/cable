@@ -1,0 +1,31 @@
+[package]
+name = "pixel-hub"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pixel Hub: trasferimento rapido di file e testi via LocalSend"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+pixelhub-engine = { path = "../crates/engine" }
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+notify-rust = "4"
+
+webkit2gtk = { version = "2.0.2", optional = true }
+cairo-rs = { version = "0.18", optional = true, features = ["png"] }
+gio = { version = "0.18", optional = true }
+tempfile = { version = "3", optional = true }
+serde = { version = "1", optional = true }
+
+[features]
+default = ["custom-protocol"]
+# Serve la UI incorporata nel binario (senza, Tauri cerca un devUrl: pagina vuota)
+custom-protocol = ["tauri/custom-protocol"]
+# Banco di prova della finestra reale (screenshot + scenario). NON incluso nel binario di produzione.
+ui-test = ["dep:webkit2gtk", "dep:cairo-rs", "dep:gio", "dep:tempfile", "dep:serde"]

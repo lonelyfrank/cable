@@ -1,0 +1,1064 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixel Hub</title>
+<style>
+:root{
+  --tint:.45;
+  --font:"SF Pro Text","SF Pro Display","Inter","Fedora Sans",system-ui,-apple-system,sans-serif;
+  --bg:#eef1f7;
+  --txt:#0b0b0f; --txt2:rgba(20,20,30,.62); --txt3:rgba(20,20,30,.38);
+  --sep:rgba(20,20,40,.10);
+  --blu:#007aff; --verde:#28c840; --rosso:#ff3b30; --arancio:#ff9500; --viola:#af52de;
+  --glass:rgba(255,255,255,calc(.20 + var(--tint)*.52));
+  --glass-forte:rgba(255,255,255,calc(.42 + var(--tint)*.45));
+  --edge:rgba(0,0,0,.16);
+  --spec:rgba(255,255,255,.85);
+  --ombra:0 18px 40px -18px rgba(30,40,80,.30);
+  --riempi:rgba(120,120,135,.13);
+  --b1:#8fb4ff; --b2:#c8a2ff; --b3:#ffb2d0; --b4:#8fe6dc;
+  color-scheme:light;
+}
+:root[data-tema="scuro"]{
+  --bg:#07080d;
+  --txt:#f5f5f7; --txt2:rgba(235,235,245,.62); --txt3:rgba(235,235,245,.34);
+  --sep:rgba(255,255,255,.10);
+  --blu:#0a84ff; --verde:#30d158; --rosso:#ff453a; --arancio:#ff9f0a; --viola:#bf5af2;
+  --glass:rgba(30,30,38,calc(.28 + var(--tint)*.52));
+  --glass-forte:rgba(44,44,54,calc(.50 + var(--tint)*.40));
+  --edge:rgba(0,0,0,.55);
+  --spec:rgba(255,255,255,.22);
+  --ombra:0 22px 48px -20px rgba(0,0,0,.65);
+  --riempi:rgba(120,120,135,.22);
+  --b1:#1f4fd8; --b2:#6a2bd1; --b3:#b0306f; --b4:#0f7f78;
+  color-scheme:dark;
+}
+:root[data-tema="scuro"] .sfondo i{opacity:.55}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font);background:var(--bg);color:var(--txt);font-size:15px;
+  -webkit-font-smoothing:antialiased;letter-spacing:-.01em;user-select:none;-webkit-user-select:none}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+::selection{background:color-mix(in srgb,var(--blu) 30%,transparent)}
+
+/* ---------- sfondo vivo ---------- */
+.sfondo{position:fixed;inset:-20%;z-index:0;filter:blur(70px) saturate(130%);pointer-events:none}
+.sfondo i{position:absolute;border-radius:50%;opacity:.85;animation:vaga 38s ease-in-out infinite alternate}
+.sfondo i:nth-child(1){width:52vw;height:52vw;left:2%;top:0;background:var(--b1)}
+.sfondo i:nth-child(2){width:46vw;height:46vw;right:0;top:8%;background:var(--b2);animation-duration:44s;animation-delay:-8s}
+.sfondo i:nth-child(3){width:40vw;height:40vw;left:30%;bottom:-4%;background:var(--b3);animation-duration:50s;animation-delay:-16s}
+.sfondo i:nth-child(4){width:30vw;height:30vw;left:-4%;bottom:6%;background:var(--b4);animation-duration:41s;animation-delay:-22s}
+@keyframes vaga{0%{transform:translate(0,0) scale(1)}50%{transform:translate(6vw,4vh) scale(1.08)}100%{transform:translate(-5vw,-3vh) scale(.95)}}
+@media (prefers-reduced-motion:reduce){.sfondo i{animation:none}}
+
+/* ---------- vetro ---------- */
+.vetro{position:relative;background:var(--glass);
+  -webkit-backdrop-filter:blur(30px) saturate(185%);backdrop-filter:blur(30px) saturate(185%);
+  border-radius:28px;
+  box-shadow:0 0 0 .5px var(--edge),inset 0 1px 0 var(--spec),inset 0 -1px 0 rgba(255,255,255,.08),var(--ombra)}
+.vetro::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(140deg,rgba(255,255,255,.35),rgba(255,255,255,0) 38%,rgba(255,255,255,0) 70%,rgba(255,255,255,.12));
+  mix-blend-mode:soft-light}
+
+/* ---------- struttura ---------- */
+main{position:relative;z-index:1;height:100%;overflow-y:auto;overflow-x:hidden;scroll-behavior:smooth}
+.barra{position:sticky;top:0;z-index:5;height:52px;display:flex;align-items:center;justify-content:center;
+  transition:background .25s,box-shadow .25s}
+.barra span{font-weight:600;font-size:15px;opacity:0;transform:translateY(4px);transition:.25s}
+.barra.su{background:color-mix(in srgb,var(--bg) 55%,transparent);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);
+  box-shadow:0 .5px 0 var(--sep)}
+.barra.su span{opacity:1;transform:none}
+.pagina{display:none;max-width:1100px;margin:0 auto;padding:0 28px 130px}
+.pagina.on{display:block;animation:entra .35s cubic-bezier(.2,.8,.2,1)}
+@keyframes entra{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.titolo{padding:6px 4px 20px}
+.titolo h1{font-size:36px;font-weight:700;letter-spacing:-.025em;line-height:1.1}
+.titolo p{color:var(--txt2);font-size:16px;margin-top:6px}
+.griglia{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
+.c12{grid-column:span 12}.c7{grid-column:span 7}.c5{grid-column:span 5}.c6{grid-column:span 6}.c4{grid-column:span 4}.c8{grid-column:span 8}
+@media (max-width:860px){.c7,.c5,.c6,.c4,.c8{grid-column:span 12}.pagina{padding:0 16px 130px}.titolo h1{font-size:30px}}
+.card{padding:22px}
+.card h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--txt2);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card h2 .dx{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500}
+.sezione{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--txt2);margin:28px 6px 10px}
+.vuoto{color:var(--txt2);font-size:14px;line-height:1.45}
+
+/* ---------- controlli ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;border-radius:999px;
+  font-weight:600;font-size:15px;background:var(--riempi);transition:transform .15s,filter .15s,background .2s}
+.btn:hover{filter:brightness(1.06)}
+.btn:active{transform:scale(.96)}
+.btn.primario{background:var(--blu);color:#fff;box-shadow:0 6px 18px -6px color-mix(in srgb,var(--blu) 70%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+.btn.rosso{background:var(--rosso);color:#fff}
+.btn.grande{height:52px;padding:0 26px;font-size:17px}
+.btn.piccolo{height:32px;padding:0 13px;font-size:13px}
+.btn.icona{width:36px;padding:0}
+.btn[disabled]{opacity:.45;pointer-events:none}
+.btn svg{width:18px;height:18px}
+.link{color:var(--blu);font-weight:500;cursor:pointer}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;font-size:12.5px;font-weight:600;background:var(--riempi);color:var(--txt2)}
+.chip.ok{background:color-mix(in srgb,var(--verde) 18%,transparent);color:var(--verde)}
+.chip.blu{background:color-mix(in srgb,var(--blu) 16%,transparent);color:var(--blu)}
+.chip.warn{background:color-mix(in srgb,var(--arancio) 18%,transparent);color:var(--arancio)}
+.chip i{width:7px;height:7px;border-radius:50%;background:currentColor}
+.chip i.pulsa{animation:pulsa 1.6s ease-in-out infinite}
+@keyframes pulsa{50%{opacity:.25}}
+
+/* liste raggruppate stile Impostazioni */
+.lista{overflow:hidden;padding:0}
+.riga{display:flex;align-items:center;gap:14px;min-height:54px;padding:10px 18px;position:relative}
+.riga+.riga::before{content:"";position:absolute;top:0;left:62px;right:0;height:.5px;background:var(--sep)}
+.lista.senza-icone .riga+.riga::before{left:18px}
+.riga .ic{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:#fff;flex:none}
+.riga .ic svg{width:18px;height:18px}
+.riga .testo{flex:1;min-width:0}
+.riga .testo b{display:block;font-weight:500;font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.riga .testo small{display:block;color:var(--txt2);font-size:13px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.riga .val{color:var(--txt2);font-size:14.5px}
+.riga.cliccabile{cursor:pointer}
+.riga.cliccabile:hover{background:var(--riempi)}
+.freccia{color:var(--txt3);width:16px;height:16px}
+.input{height:36px;border-radius:10px;border:0;background:var(--riempi);padding:0 12px;outline:none;min-width:0;width:220px;text-align:right}
+.input:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--blu) 35%,transparent);text-align:left}
+
+/* interruttore iOS */
+.sw{position:relative;width:51px;height:31px;flex:none}
+.sw input{opacity:0;width:0;height:0;position:absolute}
+.sw span{position:absolute;inset:0;border-radius:999px;background:var(--riempi);transition:.25s;cursor:pointer;box-shadow:inset 0 0 0 .5px var(--sep)}
+.sw span::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;
+  box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);transition:.25s cubic-bezier(.3,1.4,.5,1)}
+.sw input:checked+span{background:var(--verde)}
+.sw input:checked+span::after{transform:translateX(20px)}
+
+/* segmentato */
+.seg{display:inline-flex;background:var(--riempi);border-radius:10px;padding:2px;gap:2px}
+.seg button{height:30px;padding:0 14px;border-radius:8px;font-size:13.5px;font-weight:500;color:var(--txt2)}
+.seg button.on{background:var(--glass-forte);color:var(--txt);box-shadow:0 3px 8px rgba(0,0,0,.12),0 0 0 .5px var(--edge)}
+
+/* cursore vetro */
+.cursore{display:flex;align-items:center;gap:12px;width:100%}
+.cursore small{color:var(--txt2);font-size:12.5px;white-space:nowrap}
+input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:6px;border-radius:99px;
+  background:linear-gradient(90deg,rgba(255,255,255,.35),var(--blu));outline:none;box-shadow:inset 0 0 0 .5px var(--edge)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;border-radius:50%;background:#fff;
+  box-shadow:0 3px 10px rgba(0,0,0,.25),0 0 0 .5px rgba(0,0,0,.1);cursor:grab}
+input[type=range]::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:#fff;border:0;box-shadow:0 3px 10px rgba(0,0,0,.25)}
+
+.barra-prog{height:6px;border-radius:99px;background:var(--riempi);overflow:hidden}
+.barra-prog i{display:block;height:100%;background:var(--blu);border-radius:99px;transition:width .4s}
+
+/* ---------- tab bar fluttuante ---------- */
+.tabbar{position:fixed;z-index:20;left:50%;bottom:18px;transform:translateX(-50%);display:flex;gap:2px;padding:6px;border-radius:999px}
+.tab{position:relative;width:86px;height:56px;border-radius:999px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  font-size:11px;font-weight:600;color:var(--txt2);transition:color .2s}
+.tab svg{width:23px;height:23px}
+.tab.on{color:var(--blu);background:var(--riempi);box-shadow:inset 0 1px 0 var(--spec)}
+.tab .punto{position:absolute;top:8px;right:22px;min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--rosso);color:#fff;font-size:10px;line-height:16px;display:none}
+.tab .punto.on{display:block}
+@media (max-width:520px){.tab{width:64px}.tab span{font-size:10px}}
+
+/* ---------- home ---------- */
+.telefono{position:relative;width:92px;height:184px;border-radius:24px;flex:none;
+  background:linear-gradient(160deg,#30323a,#0c0d10);box-shadow:0 0 0 2px rgba(255,255,255,.2) inset,0 18px 30px -12px rgba(0,0,0,.45)}
+.telefono::before{content:"";position:absolute;inset:5px;border-radius:19px;background:var(--schermo,linear-gradient(160deg,#5b8def,#a46cf5 55%,#f37fb4))}
+.telefono::after{content:"";position:absolute;top:10px;left:50%;transform:translateX(-50%);width:28px;height:8px;border-radius:9px;background:#000}
+.telefono.spento::before{background:linear-gradient(160deg,#2b2d35,#15161a)}
+.pixel{display:flex;gap:26px;align-items:center}
+.pixel .info{flex:1;min-width:0}
+.pixel h3{font-size:24px;font-weight:700;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pixel .sub{color:var(--txt2);margin:4px 0 12px}
+.misure{display:flex;gap:22px;margin-top:16px;flex-wrap:wrap}
+.anello{display:flex;align-items:center;gap:10px}
+.anello svg{width:44px;height:44px;transform:rotate(-90deg)}
+.anello b{display:block;font-size:17px}
+.anello small{color:var(--txt2);font-size:12px}
+.spazio{flex:1;min-width:160px}
+.spazio .barra-prog{height:8px;margin:8px 0 5px}
+.spazio small{color:var(--txt2);font-size:12px}
+
+.mirror{display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;height:100%;justify-content:center}
+.tasto-tondo{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;color:#fff;
+  background:linear-gradient(160deg,color-mix(in srgb,var(--blu) 80%,#fff),var(--blu));
+  box-shadow:0 14px 30px -10px color-mix(in srgb,var(--blu) 80%,transparent),inset 0 1px 0 rgba(255,255,255,.5),0 0 0 .5px var(--edge);transition:transform .2s}
+.tasto-tondo:active{transform:scale(.93)}
+.tasto-tondo svg{width:40px;height:40px}
+.tasto-tondo.attivo{background:linear-gradient(160deg,#ff7a6e,var(--rosso));box-shadow:0 14px 30px -10px rgba(255,59,48,.7),inset 0 1px 0 rgba(255,255,255,.5)}
+.tasto-tondo.attesa{animation:onda 2s ease-out infinite}
+@keyframes onda{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--rosso) 55%,transparent)}100%{box-shadow:0 0 0 22px transparent}}
+.mirror b{font-size:17px}
+.mirror small{color:var(--txt2);font-size:13.5px;max-width:280px;line-height:1.4}
+
+.drop{border-radius:22px;border:2px dashed color-mix(in srgb,var(--txt) 18%,transparent);padding:26px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;transition:.2s;cursor:pointer}
+.drop:hover,.drop.sopra{border-color:var(--blu);background:color-mix(in srgb,var(--blu) 8%,transparent)}
+.drop .ico{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;background:color-mix(in srgb,var(--blu) 14%,transparent);color:var(--blu)}
+.drop .ico svg{width:28px;height:28px}
+.drop b{font-size:16.5px}
+.drop small{color:var(--txt2);font-size:13.5px}
+
+textarea{width:100%;min-height:92px;resize:none;border:0;outline:none;border-radius:16px;background:var(--riempi);padding:12px 14px;line-height:1.4;font-size:15px}
+textarea:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--blu) 30%,transparent)}
+.bolla{background:var(--riempi);border-radius:18px 18px 18px 6px;padding:11px 14px;line-height:1.4;font-size:14.5px;word-break:break-word;white-space:pre-wrap;max-height:120px;overflow:auto;user-select:text;-webkit-user-select:text}
+.bolla-meta{display:flex;align-items:center;gap:8px;color:var(--txt2);font-size:12.5px;margin:6px 4px 12px}
+.bolla-meta .dx{margin-left:auto;display:flex;gap:6px}
+
+/* striscia di file recenti */
+.strip{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 8px;scrollbar-width:thin}
+.tile{flex:none;width:132px;cursor:pointer}
+.tile .img{width:132px;height:132px;border-radius:20px;background:var(--riempi) center/cover no-repeat;display:grid;place-items:center;color:var(--txt2);
+  box-shadow:0 0 0 .5px var(--edge),0 10px 24px -14px rgba(0,0,0,.4);transition:transform .2s}
+.tile:hover .img{transform:translateY(-3px)}
+.tile .img svg{width:38px;height:38px}
+.tile b{display:block;font-size:13px;font-weight:500;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile small{color:var(--txt2);font-size:12px}
+
+/* dispositivi vicini (stile AirDrop) */
+.vicini{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start;min-height:120px}
+.disp{width:104px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;cursor:pointer;border-radius:20px;padding:8px 4px;transition:.2s}
+.disp:hover,.disp.sopra{background:var(--riempi)}
+.disp.sel .av{box-shadow:0 0 0 3px var(--bg),0 0 0 5.5px var(--blu)}
+.av{width:70px;height:70px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:26px;font-weight:600;
+  background:linear-gradient(160deg,#7aa2ff,#5e5ce6);box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 10px 22px -10px rgba(40,40,120,.7);transition:box-shadow .2s}
+.av svg{width:32px;height:32px}
+.disp b{font-size:13px;font-weight:600;line-height:1.25;max-width:100px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.disp small{color:var(--txt2);font-size:11.5px}
+.radar{position:relative;width:70px;height:70px;border-radius:50%;display:grid;place-items:center;color:var(--blu);background:color-mix(in srgb,var(--blu) 12%,transparent)}
+.radar::before,.radar::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--blu);opacity:0;animation:radar 2.4s ease-out infinite}
+.radar::after{animation-delay:1.2s}
+@keyframes radar{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.5);opacity:0}}
+.radar svg{width:30px;height:30px}
+
+.coda{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.coda .chip{background:var(--glass-forte);color:var(--txt);box-shadow:0 0 0 .5px var(--edge);height:30px}
+.coda .chip button{opacity:.5;display:grid;place-items:center}
+.coda .chip button svg{width:14px;height:14px}
+
+.trasf{display:flex;gap:14px;align-items:center;padding:12px 0}
+.trasf+.trasf{border-top:.5px solid var(--sep)}
+.trasf .ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none}
+.trasf .ic svg{width:20px;height:20px}
+.trasf .t{flex:1;min-width:0}
+.trasf .t b{display:block;font-size:14.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trasf .t small{color:var(--txt2);font-size:12.5px}
+.trasf .barra-prog{margin-top:7px}
+
+/* passi */
+.passi{display:flex;flex-direction:column;gap:14px}
+.passo{display:flex;gap:14px;align-items:flex-start}
+.passo .n{width:30px;height:30px;border-radius:50%;flex:none;display:grid;place-items:center;font-weight:700;font-size:14px;color:#fff;background:var(--blu)}
+.passo b{display:block;font-weight:600}
+.passo small{color:var(--txt2);font-size:13.5px}
+.schermo-hero{display:flex;gap:34px;align-items:center}
+.schermo-hero .telefono{width:120px;height:240px;border-radius:30px}
+.schermo-hero .telefono::before{border-radius:25px}
+.schermo-hero .telefono::after{width:36px;height:10px;top:13px}
+.onde{position:relative}
+.onde .w{position:absolute;right:-30px;top:50%;width:26px;height:60px;transform:translateY(-50%);color:var(--blu);opacity:0}
+.onde.on .w{opacity:1;animation:pulsa 1.4s infinite}
+pre.log{font:12px/1.5 ui-monospace,"JetBrains Mono","Fedora Mono",monospace;background:var(--riempi);border-radius:14px;padding:12px;max-height:220px;overflow:auto;white-space:pre-wrap;color:var(--txt2);user-select:text;-webkit-user-select:text}
+details summary{cursor:pointer;color:var(--txt2);font-size:13.5px;list-style:none;padding:4px 2px}
+details summary::-webkit-details-marker{display:none}
+
+/* avviso */
+.avviso{display:flex;gap:14px;align-items:center;padding:16px 18px;margin-bottom:18px}
+.avviso .ic{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:var(--arancio);color:#fff;flex:none}
+.avviso .ic svg{width:20px;height:20px}
+.avviso .t{flex:1}
+.avviso b{display:block}
+.avviso small{color:var(--txt2);font-size:13px}
+
+/* ---------- sheet richiesta ---------- */
+.velo{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.18);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:none;align-items:flex-end;justify-content:center;padding:18px}
+:root[data-tema="scuro"] .velo{background:rgba(0,0,0,.45)}
+.velo.on{display:flex;animation:fade .25s}
+@keyframes fade{from{opacity:0}}
+.sheet{width:min(460px,100%);padding:26px 24px 22px;border-radius:36px;background:var(--glass-forte);text-align:center;animation:su .4s cubic-bezier(.2,.9,.25,1.1)}
+@keyframes su{from{transform:translateY(60px);opacity:0}}
+.sheet .av{margin:0 auto 12px;width:64px;height:64px}
+.sheet h3{font-size:20px;font-weight:700;letter-spacing:-.02em}
+.sheet p{color:var(--txt2);margin-top:4px}
+.sheet .files{margin:18px 0;text-align:left;max-height:180px;overflow:auto;border-radius:16px;background:var(--riempi);padding:4px 14px}
+.sheet .files div{display:flex;gap:10px;align-items:center;padding:9px 0;font-size:14px}
+.sheet .files div+div{border-top:.5px solid var(--sep)}
+.sheet .files svg{width:18px;height:18px;color:var(--txt2);flex:none}
+.sheet .files span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheet .files em{font-style:normal;color:var(--txt2);font-size:12.5px}
+.sheet .azioni{display:flex;gap:12px}
+.sheet .azioni .btn{flex:1;height:50px;font-size:16px}
+.sheet label{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:16px;color:var(--txt2);font-size:13.5px;cursor:pointer}
+
+/* ---------- toast ---------- */
+.toasts{position:fixed;z-index:60;top:52px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{padding:12px 20px;border-radius:999px;background:var(--glass-forte);font-weight:600;font-size:14px;display:flex;gap:10px;align-items:center;animation:giu .35s cubic-bezier(.2,.9,.25,1.1);pointer-events:auto}
+.toast svg{width:18px;height:18px}
+@keyframes giu{from{transform:translateY(-16px);opacity:0}}
+
+/* rilascio file ovunque */
+.rilascio{position:fixed;inset:12px;z-index:50;border-radius:34px;border:3px dashed var(--blu);background:color-mix(in srgb,var(--blu) 10%,transparent);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;pointer-events:none}
+.rilascio.on{display:flex}
+.rilascio b{font-size:24px;font-weight:700}
+.rilascio small{color:var(--txt2);font-size:15px}
+</style>
+</head>
+<body>
+<div class="sfondo"><i></i><i></i><i></i><i></i></div>
+
+<main id="main">
+  <div class="barra" id="barra"><span id="barraTitolo">Home</span></div>
+
+  <!-- ======================= HOME ======================= -->
+  <section class="pagina on" data-p="home" data-t="Home">
+    <div class="titolo"><h1 id="saluto">Ciao</h1><p id="data"></p></div>
+    <div id="avvisoLS"></div>
+    <div class="griglia">
+      <div class="vetro card c7" id="cardPixel"></div>
+      <div class="vetro card c5">
+        <h2>Duplica schermo</h2>
+        <div class="mirror" id="homeMirror"></div>
+      </div>
+      <div class="vetro card c7">
+        <h2>Invia al Pixel <span class="dx" id="homeDest"></span></h2>
+        <div class="drop" id="homeDrop">
+          <div class="ico" data-i="su"></div>
+          <b>Trascina qui foto e file</b>
+          <small>oppure <span class="link">sfoglia il computer</span></small>
+        </div>
+        <div id="homeInvii"></div>
+      </div>
+      <div class="vetro card c5">
+        <h2>Appunti condivisi</h2>
+        <div id="homeMsg"></div>
+        <textarea id="homeTesto" placeholder="Scrivi o incolla qui un testo, un link, un codice…"></textarea>
+        <div style="display:flex;gap:10px;margin-top:12px">
+          <button class="btn piccolo" id="homeIncolla"><span data-i="appunti"></span>Incolla</button>
+          <button class="btn primario piccolo" id="homeInviaTesto" style="margin-left:auto"><span data-i="invia"></span>Invia al Pixel</button>
+        </div>
+      </div>
+      <div class="vetro card c12">
+        <h2>Arrivati di recente <span class="dx"><span class="link" data-azione="apriCartella">Apri cartella</span></span></h2>
+        <div class="strip" id="homeRecenti"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= SCHERMO ======================= -->
+  <section class="pagina" data-p="schermo" data-t="Schermo">
+    <div class="titolo"><h1>Schermo</h1><p>Guarda il Pixel sul PC: perfetto per mostrare foto, video e app.</p></div>
+    <div class="griglia">
+      <div class="vetro card c12">
+        <div class="schermo-hero">
+          <div class="onde" id="onde"><div class="telefono" id="telSchermo"></div><svg class="w" viewBox="0 0 26 60" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M4 18c5 7 5 17 0 24"/><path d="M13 10c9 11 9 29 0 40"/><path d="M22 2c13 16 13 40 0 56"/></svg></div>
+          <div style="flex:1;min-width:0">
+            <div id="schermoStato"></div>
+          </div>
+        </div>
+      </div>
+      <div class="vetro card c6">
+        <h2>Sul Pixel</h2>
+        <div class="passi">
+          <div class="passo"><div class="n">1</div><div><b>Abilita Debug USB</b><small>Impostazioni › Sistema › Opzioni sviluppatore</small></div></div>
+          <div class="passo"><div class="n">2</div><div><b>Collega il cavo USB</b><small>Accetta «Consenti debug USB» sul Pixel</small></div></div>
+          <div class="passo"><div class="n">3</div><div><b id="passo3">Premi Avvia in questa pagina</b><small>Dopo qualche secondo si apre la finestra</small></div></div>
+        </div>
+      </div>
+      <div class="vetro lista c6" style="align-self:start">
+        <div class="riga"><div class="ic" style="background:var(--blu)" data-i="schermo"></div><div class="testo"><b>Schermo intero</b><small>Premi Alt+F oppure ferma la duplicazione</small></div>
+          <label class="sw"><input type="checkbox" data-conf="schermo_intero"><span></span></label></div>
+        <div class="riga"><div class="ic" style="background:var(--viola)" data-i="pc"></div><div class="testo"><b>Nome del PC</b><small>Come lo vede il Pixel</small></div>
+          <input class="input" data-conf-testo="nome_pc" maxlength="40"></div>
+      </div>
+      <div class="c12"><details><summary>Dettagli tecnici ›</summary><pre class="log" id="schermoLog"></pre></details></div>
+    </div>
+  </section>
+
+  <!-- ======================= CONDIVIDI ======================= -->
+  <section class="pagina" data-p="condividi" data-t="Condividi">
+    <div class="titolo"><h1>Condividi</h1><p>File e testi tra il Pixel e questo PC. Sul Pixel tieni aperta l'app LocalSend.</p></div>
+    <div id="avvisoLS2"></div>
+    <div class="griglia">
+      <div class="vetro card c12">
+        <h2>Vicino a te <span class="dx"><span class="link" id="cerca">Cerca di nuovo</span></span></h2>
+        <div class="vicini" id="vicini"></div>
+        <details style="margin-top:10px"><summary>Non lo trovi? Inserisci l'indirizzo IP del Pixel ›</summary>
+          <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
+            <input class="input" id="ipManuale" placeholder="es. 192.168.1.50" style="text-align:left">
+            <button class="btn piccolo" id="ipVai">Collega</button>
+            <small class="vuoto">Lo trovi nell'app LocalSend del Pixel, scheda Ricevi.</small>
+          </div></details>
+      </div>
+      <div class="vetro card c7">
+        <h2>Da inviare</h2>
+        <div class="drop" id="condDrop">
+          <div class="ico" data-i="su"></div>
+          <b>Trascina qui i file</b>
+          <small>o <span class="link">sceglili</span> · puoi anche trascinarli direttamente sul dispositivo</small>
+        </div>
+        <div class="coda" id="coda"></div>
+        <div style="display:flex;margin-top:14px"><button class="btn primario" id="inviaCoda" style="margin-left:auto" disabled><span data-i="invia"></span><span id="inviaCodaT">Invia</span></button></div>
+      </div>
+      <div class="vetro card c5">
+        <h2>Trasferimenti</h2>
+        <div id="trasferimenti"></div>
+      </div>
+      <div class="vetro card c12">
+        <h2>Messaggi ricevuti</h2>
+        <div id="messaggi"></div>
+      </div>
+      <div class="c12"><div class="sezione" style="display:flex">Ricevuti sul PC <span style="margin-left:auto;text-transform:none;letter-spacing:0" class="link" data-azione="apriCartella">Apri cartella</span></div>
+        <div class="vetro lista" id="ricevuti"></div>
+        <p class="vuoto" style="margin:10px 8px">Suggerimento: trascina una riga sul desktop o in un'altra app per copiarla lì.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= PIXEL (ADB) ======================= -->
+  <section class="pagina" data-p="pixel" data-t="Pixel">
+    <div class="titolo"><h1>Pixel</h1><p>Collegato tramite ADB: batteria, spazio e le tue foto sul PC.</p></div>
+    <div id="cavo"></div>
+  </section>
+
+  <!-- ======================= IMPOSTAZIONI ======================= -->
+  <section class="pagina" data-p="impostazioni" data-t="Impostazioni">
+    <div class="titolo"><h1>Impostazioni</h1></div>
+
+    <div class="sezione">Aspetto</div>
+    <div class="vetro lista">
+      <div class="riga"><div class="ic" style="background:#5e5ce6" data-i="luna"></div><div class="testo"><b>Tema</b></div>
+        <div class="seg" id="segTema"><button data-v="auto">Automatico</button><button data-v="chiaro">Chiaro</button><button data-v="scuro">Scuro</button></div></div>
+      <div class="riga" style="flex-wrap:wrap"><div class="ic" style="background:linear-gradient(160deg,#64d2ff,#0a84ff)" data-i="goccia"></div><div class="testo"><b>Vetro</b><small>Più trasparente o più colorato e leggibile</small></div>
+        <div class="cursore" style="flex-basis:100%;padding:4px 0 6px 46px"><small>Trasparente</small><input type="range" min="0" max="100" id="vetro"><small>Colorato</small></div></div>
+    </div>
+
+    <div class="sezione">Ricezione</div>
+    <div class="vetro lista">
+      <div class="riga"><div class="ic" style="background:var(--viola)" data-i="pc"></div><div class="testo"><b>Nome del PC</b><small>Come appare sul Pixel in LocalSend</small></div>
+        <input class="input" data-conf-testo="nome_pc" maxlength="40"></div>
+      <div class="riga cliccabile" data-azione="scegliCartella" data-q="file"><div class="ic" style="background:var(--blu)" data-i="cartella"></div><div class="testo"><b>Cartella dei file ricevuti</b><small id="impCartella"></small></div><span class="link">Cambia</span></div>
+      <div class="riga cliccabile" data-azione="scegliCartella" data-q="foto"><div class="ic" style="background:var(--arancio)" data-i="foto"></div><div class="testo"><b>Cartella delle foto importate</b><small id="impFoto"></small></div><span class="link">Cambia</span></div>
+      <div class="riga"><div class="ic" style="background:var(--verde)" data-i="scudo"></div><div class="testo"><b>Accetta subito dai miei dispositivi</b><small>Niente conferma per i dispositivi che hai segnato come tuoi</small></div>
+        <label class="sw"><input type="checkbox" data-conf="auto_accetta"><span></span></label></div>
+      <div class="riga"><div class="ic" style="background:var(--rosso)" data-i="campana"></div><div class="testo"><b>Notifiche</b><small>Avvisa quando arriva qualcosa</small></div>
+        <label class="sw"><input type="checkbox" data-conf="notifiche"><span></span></label></div>
+    </div>
+    <div class="vetro card"><h2>Il mio Pixel</h2><p>Per aggiungere ADB al Pixel già associato:</p><button class="btn" id="configurePixel">Configura Pixel</button><p>Per cambiare telefono o PIN, chiudi l’app ed esegui lo script con reset-pairing. I file già salvati restano nelle loro cartelle.</p></div><div id="fidati"></div>
+
+    <div class="sezione">Avvio</div>
+    <div class="vetro lista">
+      <div class="riga"><div class="ic" style="background:#8e8e93" data-i="luna"></div><div class="testo"><b>Resta pronta in background</b><small>Chiudendo la finestra puoi continuare a ricevere dal Pixel</small></div>
+        <label class="sw"><input type="checkbox" data-conf="background"><span></span></label></div>
+      <div class="riga"><div class="ic" style="background:#30b0c7" data-i="accendi"></div><div class="testo"><b>Avvia all'accensione del PC</b><small>Parte nascosta, pronta a ricevere</small></div>
+        <label class="sw"><input type="checkbox" data-conf="avvio_login"><span></span></label></div>
+    </div>
+
+    <div class="sezione" style="display:flex">Componenti <span style="margin-left:auto;text-transform:none;letter-spacing:0" class="link" id="installa"></span></div>
+    <div class="vetro lista" id="componenti"></div>
+
+    <div class="sezione">Rete</div>
+    <div class="vetro lista" id="rete"></div>
+
+    <p class="vuoto" style="text-align:center;margin:30px 0 0" id="versione"></p>
+  </section>
+</main>
+
+<nav class="tabbar vetro" id="tabbar">
+  <button class="tab on" data-p="home"><span data-i="casa"></span><span>Home</span></button>
+  <button class="tab" data-p="schermo"><span data-i="schermo"></span><span>Schermo</span></button>
+  <button class="tab" data-p="condividi"><span data-i="frecce"></span><span>Condividi</span><i class="punto" id="puntoCond"></i></button>
+  <button class="tab" data-p="pixel"><span data-i="telefono"></span><span>Pixel</span></button>
+  <button class="tab" data-p="impostazioni"><span data-i="ingranaggio"></span><span>Impostazioni</span></button>
+</nav>
+
+<div class="velo" id="velo"><div class="sheet vetro" id="sheet"></div></div>
+<div class="toasts" id="toasts"></div>
+<div class="rilascio" id="rilascio"><div class="drop" style="border:0;pointer-events:none"><div class="ico" data-i="su"></div></div><b id="rilascioT">Rilascia per inviare</b><small id="rilascioS"></small></div>
+<input type="file" id="sceltaFile" multiple hidden>
+
+<div id="wizard" style="position:fixed;inset:0;z-index:5000;background:var(--bg,#111827);overflow:auto;padding:30px 18px;display:block">
+ <div style="max-width:760px;margin:auto">
+ <h1>Abbina il tuo Pixel</h1><p style="margin:12px 0 24px">Le funzioni dell’app restano bloccate fino alla conferma. Nessun telefono viene scelto automaticamente.</p>
+ <div id="wizardPair">
+ <div class="vetro card" style="margin-bottom:16px"><h2>1. Bluetooth — facoltativo</h2>
+ <p>Puoi iniziare senza cavo: apri Bluetooth, scegli il Pixel e verifica che il codice coincida sui due schermi. Poi torna qui e aggiorna l’elenco.</p>
+ <p>Questo abbinamento non autentica LocalSend o ADB: li confermerai separatamente sullo stesso Pixel.</p>
+ <button class="btn" id="wBT">Apri Bluetooth di Fedora</button> <button class="btn" id="wRefresh">Aggiorna elenchi</button>
+ <label style="display:block;margin-top:14px">Dispositivo Bluetooth abbinato <select class="input" id="wBTChoice"><option value="">Salta Bluetooth</option></select></label></div>
+ <div class="vetro card" style="margin-bottom:16px"><h2>2. Conferma LocalSend sul Pixel</h2>
+ <p>Apri LocalSend sul Pixel, attiva la cifratura e usa la stessa rete Wi-Fi di Fedora. Chiudi LocalSend desktop. Seleziona il telefono: riceverà un codice da riportare qui.</p>
+ <select class="input" id="wDevice"><option value="">Seleziona esplicitamente il Pixel…</option></select>
+ <button class="btn primario" id="wSend">Invia codice al Pixel selezionato</button>
+ <details style="margin-top:12px"><summary>Non compare?</summary><p>Controlla il firewall (porta 53317 TCP/UDP) e la rete. Puoi cercare l’IP mostrato da LocalSend sul Pixel.</p><input class="input" id="wIP" placeholder="IP locale del Pixel"><button class="btn" id="wFind">Cerca IP</button></details>
+ <label style="display:block;margin-top:14px">Codice del messaggio Pixel Hub ricevuto in LocalSend (non Bluetooth/ADB) <input class="input" id="wCode" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+ <label style="display:block;margin-top:14px">Scegli un PIN di ricezione di 6 cifre <input class="input" id="wPIN" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password"></label>
+ <p>Conserva questo PIN: LocalSend sul Pixel te lo chiederà quando invii a Fedora. Il PC conserva solo un hash del PIN. I mittenti non associati vengono rifiutati, anche per i testi.</p>
+ <p id="wCountdown" role="status"></p><button class="btn primario" id="wConfirm">Conferma questo Pixel</button></div>
+ </div>
+ <div id="wizardADB" class="vetro card" style="display:none;margin-bottom:16px"><h2>3. Schermo e foto — ADB facoltativo</h2>
+ <p id="wPaired"></p><p>Puoi completare usando solo LocalSend. Per scrcpy e DCIM, autorizza ADB via USB oppure usa Debug wireless sullo stesso Pixel. Poi aggiorna e scegli il suo modello e seriale.</p>
+ <details><summary>Collega ADB senza cavo</summary><p>Sul Pixel: Opzioni sviluppatore → Debug wireless → Associa dispositivo con codice. La porta di abbinamento e quella di connessione sono diverse; copia entrambe dal telefono.</p>
+ <input class="input" id="wPairAddr" placeholder="IP:porta di abbinamento">
+ <input class="input" id="wADBCode" type="password" inputmode="numeric" maxlength="6" placeholder="Codice ADB di 6 cifre" autocomplete="off">
+ <input class="input" id="wConnectAddr" placeholder="IP:porta di connessione">
+ <button class="btn" id="wWiFi">Associa e connetti ADB Wi-Fi</button></details>
+ <button class="btn" id="wRefreshADB">Aggiorna dispositivi ADB</button>
+ <select class="input" id="wADB"><option value="">Per ora usa solo LocalSend</option></select>
+ <p>L’identità ADB viene salvata separatamente. Se colleghi un telefono diverso, schermo e importazione restano bloccati.</p>
+ <button class="btn primario" id="wFinish">Completa e apri Pixel Hub</button></div>
+ <p id="wStatus" role="status" style="padding:12px;white-space:pre-wrap"></p>
+ </div>
+</div>
+
+<script>
+"use strict";
+/* ------------------------------------------------------------ icone (disegnate a mano) */
+const P = (d, extra = "") => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" ${extra}>${d}</svg>`;
+const I = {
+  casa: P('<path d="M3.5 10.5 12 4l8.5 6.5"/><path d="M5.5 9v10.5h13V9"/><path d="M10 19.5v-5h4v5"/>'),
+  schermo: P('<rect x="3" y="4.5" width="18" height="12" rx="2.5"/><path d="M8.5 20h7"/><path d="M12 16.5V20"/>'),
+  frecce: P('<path d="M7 4v14"/><path d="m3.5 14.5 3.5 3.5 3.5-3.5"/><path d="M17 20V6"/><path d="m13.5 9.5 3.5-3.5 3.5 3.5"/>'),
+  telefono: P('<rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 5.5h3"/>'),
+  ingranaggio: P('<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M21.2 12h-2.4M5.2 12H2.8M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7M18.5 18.5l-1.7-1.7M7.2 7.2 5.5 5.5"/>'),
+  su: P('<path d="M12 15.5V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M4.5 14.5v3a2.5 2.5 0 0 0 2.5 2.5h10a2.5 2.5 0 0 0 2.5-2.5v-3"/>'),
+  invia: P('<path d="M4 12 20 4l-6 16-3-7z"/><path d="m11 13 9-9"/>'),
+  appunti: P('<rect x="6" y="4.5" width="12" height="16" rx="2.5"/><path d="M9.5 3.5h5v3h-5z"/>'),
+  copia: P('<rect x="8.5" y="8.5" width="11" height="11" rx="2.5"/><path d="M15.5 8.5V6.5A2 2 0 0 0 13.5 4.5h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/>'),
+  play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>',
+  stop: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/></svg>',
+  mirror: P('<rect x="3" y="7" width="12" height="9" rx="2"/><path d="M9 4h10a2 2 0 0 1 2 2v7"/>'),
+  foto: P('<rect x="3" y="4.5" width="18" height="15" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8.5 8.5"/>'),
+  video: P('<rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="m16 10.5 5-3v9l-5-3"/>'),
+  audio: P('<path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>'),
+  pdf: P('<path d="M14 3.5H7A2.5 2.5 0 0 0 4.5 6v12A2.5 2.5 0 0 0 7 20.5h10a2.5 2.5 0 0 0 2.5-2.5V9z"/><path d="M14 3.5V9h5.5"/><path d="M8.5 14h7M8.5 17h4.5"/>'),
+  file: P('<path d="M14 3.5H7A2.5 2.5 0 0 0 4.5 6v12A2.5 2.5 0 0 0 7 20.5h10a2.5 2.5 0 0 0 2.5-2.5V9z"/><path d="M14 3.5V9h5.5"/>'),
+  testo: P('<path d="M5 6.5h14M5 11h14M5 15.5h9"/>'),
+  archivio: P('<rect x="3.5" y="4.5" width="17" height="5" rx="1.5"/><path d="M5 9.5v8A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5v-8"/><path d="M10 13h4"/>'),
+  cartella: P('<path d="M3.5 7.5A2.5 2.5 0 0 1 6 5h3.5l2 2.5H18a2.5 2.5 0 0 1 2.5 2.5v7.5A2.5 2.5 0 0 1 18 20H6a2.5 2.5 0 0 1-2.5-2.5z"/>'),
+  x: P('<path d="M6 6l12 12M18 6 6 18"/>'),
+  ok: P('<path d="m5 12.5 4.5 4.5L19 7.5"/>'),
+  attenzione: P('<path d="M12 4 2.8 19.5h18.4z"/><path d="M12 10v4.5M12 17.2v.1"/>'),
+  pc: P('<rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M2 19.5h20"/>'),
+  luna: P('<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>'),
+  goccia: P('<path d="M12 3.5s6.5 7 6.5 11a6.5 6.5 0 0 1-13 0c0-4 6.5-11 6.5-11z"/>'),
+  scudo: P('<path d="M12 3.5 5 6v5.5c0 4.5 3 7.7 7 9 4-1.3 7-4.5 7-9V6z"/><path d="m9 12 2 2 4-4"/>'),
+  campana: P('<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>'),
+  accendi: P('<path d="M12 3.5v8"/><path d="M7 6.5a7 7 0 1 0 10 0"/>'),
+  wifi: P('<path d="M2.5 9a14 14 0 0 1 19 0"/><path d="M5.5 12.5a9.5 9.5 0 0 1 13 0"/><path d="M8.7 16a5 5 0 0 1 6.6 0"/><circle cx="12" cy="19.2" r=".9" fill="currentColor"/>'),
+  cavo: P('<path d="M9 3.5v4M15 3.5v4"/><rect x="6.5" y="7.5" width="11" height="6" rx="2"/><path d="M12 13.5v3a3 3 0 0 1-3 3H7"/>'),
+  lucchetto: P('<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/>'),
+  occhio: P('<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>'),
+  messaggio: P('<path d="M20.5 11.5c0 4.1-3.8 7.5-8.5 7.5-1.2 0-2.3-.2-3.3-.6L4 20l1.3-3.6A7 7 0 0 1 3.5 11.5C3.5 7.4 7.3 4 12 4s8.5 3.4 8.5 7.5z"/>'),
+  rete: P('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.5 3.5 5.5 3.5 8.5s-1 6-3.5 8.5c-2.5-2.5-3.5-5.5-3.5-8.5s1-6 3.5-8.5z"/>'),
+  mondo: P('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/>'),
+};
+function icone(root = document) { root.querySelectorAll("[data-i]").forEach(e => { if (!e.dataset.done) { e.innerHTML = I[e.dataset.i] || ""; e.dataset.done = 1; } }); }
+
+/* ------------------------------------------------------------ utilità */
+const $ = s => document.querySelector(s);
+const T = new URLSearchParams(location.search).get("t") || "";
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const dim = n => { n = +n || 0; const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0; while (n >= 1024 && i < 4) { n /= 1024; i++; } return (i ? n.toFixed(n < 10 ? 1 : 0) : n) + " " + u[i]; };
+const fa = t => { const s = Date.now() / 1000 - t; if (s < 60) return "adesso"; if (s < 3600) return Math.floor(s / 60) + " min fa"; if (s < 86400) return Math.floor(s / 3600) + " h fa";
+  const d = new Date(t * 1000); return d.toLocaleDateString("it-IT", { day: "numeric", month: "short" }); };
+const iniziale = s => (String(s || "?").replace(/^(pixel|android)\s+(di\s+)?/i, "").trim()[0] || "?").toUpperCase();
+function set(el, html) { if (typeof el === "string") el = $(el); if (el && el._h !== html) { el._h = html; el.innerHTML = html; icone(el); } }
+async function api(path, body) {
+  try {
+    const r = await fetch("/api/" + path, { method: "POST", headers: { "X-Token": T, "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    return await r.json();
+  } catch (e) { return { ok: false }; }
+}
+function toast(testo, tipo = "ok") {
+  const t = document.createElement("div");
+  t.className = "toast vetro";
+  t.innerHTML = (tipo === "ok" ? `<span style="color:var(--verde)">${I.ok}</span>` : `<span style="color:var(--arancio)">${I.attenzione}</span>`) + esc(testo);
+  $("#toasts").appendChild(t);
+  setTimeout(() => { t.style.transition = ".3s"; t.style.opacity = 0; t.style.transform = "translateY(-10px)"; }, 2800);
+  setTimeout(() => t.remove(), 3200);
+}
+const MODELLI = {};
+
+/* ------------------------------------------------------------ stato */
+let S = null, visto = Date.now() / 1000, pagina = "home", destSel = null, coda = [], ultimoPoll = 0, sheetId = null;
+const iconaTipo = t => I[{ foto: "foto", video: "video", audio: "audio", pdf: "pdf", testo: "testo", archivio: "archivio", cartella: "cartella" }[t] || "file"];
+const coloreTipo = t => ({ foto: "#ff9f0a", video: "#ff375f", audio: "#bf5af2", pdf: "#ff453a", testo: "#64d2ff", archivio: "#a2845e", cartella: "#0a84ff" }[t] || "#8e8e93");
+
+function vicini() { return (S?.ls.dispositivi || []).filter(d => d.vicino); }
+function destinazione() {
+  if (!S?.pairing.ready) return null;
+  return vicini().find(d => d.fp === S.pairing.fp) || null;
+}
+
+/* ------------------------------------------------------------ navigazione */
+function vai(p) {
+  pagina = p;
+  document.querySelectorAll(".pagina").forEach(s => s.classList.toggle("on", s.dataset.p === p));
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t.dataset.p === p));
+  $("#barraTitolo").textContent = document.querySelector(`.pagina[data-p="${p}"]`).dataset.t;
+  $("#main").scrollTo({ top: 0, behavior: "instant" });
+  try { localStorage.setItem("hub.pagina", p); } catch (e) {}
+  if (S) render();
+}
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => vai(t.dataset.p));
+$("#main").addEventListener("scroll", () => $("#barra").classList.toggle("su", $("#main").scrollTop > 40));
+
+/* ------------------------------------------------------------ tema e vetro */
+function applicaAspetto() {
+  const c = S.conf;
+  const scuro = c.tema === "scuro" || (c.tema === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.tema = scuro ? "scuro" : "chiaro";
+  if (!applicaAspetto.trascina) document.documentElement.style.setProperty("--tint", (c.vetro / 100).toFixed(2));
+}
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => S && applicaAspetto());
+
+/* ------------------------------------------------------------ render */
+function render() {
+  wizardRender();
+  applicaAspetto();
+  renderHome(); renderSchermo(); renderCondividi(); renderCavo(); renderImpostazioni(); renderSheet();
+  if (pagina === "condividi") visto = Date.now() / 1000;
+  const pend = S.ls.richieste.filter(r => r.stato === "attesa").length + S.ls.messaggi.filter(m => m.quando > visto).length;
+  const p = $("#puntoCond"); p.textContent = pend; p.classList.toggle("on", pend > 0 && pagina !== "condividi");
+}
+
+function saluto() {
+  const h = new Date().getHours(), n = S.utente ? ", " + S.utente : "";
+  return (h < 5 ? "Buonanotte" : h < 13 ? "Buongiorno" : h < 18 ? "Buon pomeriggio" : "Buonasera") + n;
+}
+
+function avvisoLS() {
+  const ls = S.ls;
+  if (ls.attivo) return "";
+  const porta = ls.errore === "porta";
+  return `<div class="vetro avviso"><div class="ic">${I.attenzione}</div><div class="t">
+    <b>${porta ? "Un'altra app sta già ricevendo i file" : "Ricezione file non attiva"}</b>
+    <small>${porta ? "Probabilmente LocalSend per PC è aperto: Pixel Hub lo sostituisce. Chiudilo e riprova." : esc(ls.errore || "")}</small></div>
+    <button class="btn piccolo primario" data-azione="riprovaLS">${porta ? "Riprova" : "Riprova"}</button></div>`;
+}
+
+function renderHome() {
+  set("#saluto", esc(saluto()));
+  set("#data", esc(new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" }).replace(/^./, c => c.toUpperCase())));
+  set("#avvisoLS", avvisoLS());
+
+  // card Pixel
+  const cv = S.cavo, info = cv.info || {}, dest = destinazione();
+  let h;
+  if (cv.stato === "collegato") {
+    const batt = +info.BatteryCurrentCapacity || 0, carica = info.BatteryIsCharging === "true";
+    const tot = +info.TotalDiskCapacity || 0, lib = +info.AmountDataAvailable || 0, usato = tot ? Math.round((tot - lib) / tot * 100) : 0;
+    const col = batt <= 20 ? "var(--rosso)" : carica ? "var(--verde)" : "var(--verde)";
+    h = `<h2>Il tuo Pixel</h2><div class="pixel"><div class="telefono"></div><div class="info">
+      <h3>${esc(info.DeviceName || "Pixel")}</h3><div class="sub">${esc(MODELLI[info.ProductType] || "Pixel")} · Android ${esc(info.ProductVersion)}</div>
+      <span class="chip ok"><i></i>Collegato tramite ADB</span>${dest ? ' <span class="chip blu"><i></i>Anche in Wi-Fi</span>' : ""}
+      <div class="misure"><div class="anello"><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" stroke="var(--riempi)" stroke-width="5" fill="none"/>
+        <circle cx="22" cy="22" r="18" stroke="${col}" stroke-width="5" fill="none" stroke-linecap="round" stroke-dasharray="${(batt / 100 * 113).toFixed(1)} 113"/></svg>
+        <div><b>${batt ? batt + "%" : "—"}</b><small>${carica ? "In carica" : "Batteria"}</small></div></div>
+        ${tot ? `<div class="spazio"><b>${dim(lib)} liberi</b><div class="barra-prog"><i style="width:${usato}%;background:${usato > 90 ? "var(--rosso)" : "var(--blu)"}"></i></div><small>usati ${dim(tot - lib)} di ${dim(tot)}</small></div>` : ""}
+      </div></div></div>`;
+  } else if (dest) {
+    h = `<h2>Il tuo Pixel</h2><div class="pixel"><div class="telefono"></div><div class="info">
+      <h3>${esc(dest.alias)}</h3><div class="sub">${esc(dest.modello || "Pixel")} · via ${S.rete.hotspot ? "hotspot" : "Wi-Fi"}</div>
+      <span class="chip ok"><i></i>Vicino e pronto</span>
+      <p class="vuoto" style="margin-top:14px">Trascina file qui sotto per mandarglieli. Collega il cavo per vedere batteria e spazio.</p></div></div>`;
+  } else {
+    h = `<h2>Il tuo Pixel</h2><div class="pixel"><div class="telefono spento"></div><div class="info">
+      <h3>Non lo vedo</h3><div class="sub">Due modi per collegarlo:</div>
+      <div class="passi" style="gap:10px"><div class="passo"><div class="n" style="background:var(--verde)">${I.wifi.replace("<svg", '<svg width="16" height="16"')}</div><div><b>Apri LocalSend sul Pixel</b><small>Stessa Wi-Fi o hotspot del telefono</small></div></div>
+      <div class="passo"><div class="n" style="background:var(--arancio)">${I.cavo.replace("<svg", '<svg width="16" height="16"')}</div><div><b>Oppure collega il cavo</b><small>Poi accetta «Consenti debug USB» sul telefono</small></div></div></div>
+      </div></div>`;
+  }
+  set("#cardPixel", h);
+
+  // mirror
+  const sc = S.schermo;
+  let m;
+  if (!sc.installato) m = `<div class="tasto-tondo" style="background:var(--riempi);color:var(--txt3)">${I.mirror}</div><b>Da installare</b><small>Serve scrcpy: lo installi da Impostazioni › Componenti.</small>`;
+  else if (sc.connesso) m = `<button class="tasto-tondo attivo" data-azione="schermo">${I.stop}</button><b>Schermo collegato</b><small>Lo schermo del Pixel è nella sua finestra. Tocca per fermare.</small>`;
+  else if (sc.attivo) m = `<button class="tasto-tondo attivo" data-azione="schermo">${I.stop}</button><b>Avvio scrcpy…</b><small>Controlla il Pixel e i dettagli in Schermo.</small>`;
+  else m = `<button class="tasto-tondo" data-azione="schermo">${I.play}</button><b>Schermo Pixel</b><small>Collega il Pixel con Debug USB e premi Avvia.</small>`;
+  set("#homeMirror", m);
+
+  set("#homeDest", dest ? `<span class="chip blu"><i></i>a ${esc(dest.alias)}</span>` : `<span class="chip warn"><i class="pulsa"></i>apri LocalSend sul Pixel</span>`);
+  set("#homeInvii", listaInvii(S.ls.invii.slice(0, 2), true));
+
+  const msg = S.ls.messaggi[0];
+  set("#homeMsg", msg ? bolla(msg) : "");
+
+  const rec = S.recenti.slice(0, 12);
+  set("#homeRecenti", rec.length ? rec.map(tile).join("") : `<p class="vuoto">Quando il Pixel ti manda qualcosa, lo trovi qui. Sul Pixel: Condividi › LocalSend › «${esc(S.conf.nome_pc)}».</p>`);
+}
+
+function bolla(m) {
+  return `<div class="bolla">${esc(m.testo)}</div><div class="bolla-meta">${I.messaggio.replace("<svg", '<svg width="14" height="14"')} ${esc(m.alias)} · ${fa(m.quando)}
+    <span class="dx"><button class="btn piccolo" data-azione="copia" data-id="${esc(m.id)}">${I.copia}Copia</button>
+    ${/^https?:\/\/\S+$/.test(m.testo.trim()) ? `<button class="btn piccolo" data-azione="apriLink" data-id="${esc(m.id)}">${I.mondo}Apri</button>` : ""}</span></div>`;
+}
+
+function tile(f) {
+  const img = f.tipo === "foto" && !/\.hei[cf]$/i.test(f.nome);
+  const sty = img ? `style="background-image:url('/api/anteprima?t=${encodeURIComponent(T)}&path=${encodeURIComponent(f.path)}')"` : `style="color:${coloreTipo(f.tipo)}"`;
+  return `<div class="tile" draggable="true" data-file="${esc(f.path)}" title="${esc(f.nome)}"><div class="img" ${sty}>${img ? "" : iconaTipo(f.tipo)}</div>
+    <b>${esc(f.nome)}</b><small>${f.dir ? "Cartella" : dim(f.size)} · ${fa(f.mtime)}</small></div>`;
+}
+
+function listaInvii(lista, compatta) {
+  if (!lista.length) return compatta ? "" : `<p class="vuoto">Nessun trasferimento in corso.</p>`;
+  return `<div style="margin-top:${compatta ? 14 : 0}px">` + lista.map(j => {
+    const pct = j.totale ? Math.round(j.inviati / j.totale * 100) : 0;
+    const st = { attesa: "Aspetto che accetti sul Pixel…", invio: `Invio… ${pct}% · ${dim(j.inviati)} di ${dim(j.totale)}`, fatto: "Inviato ✓", errore: j.errore, annullato: "Annullato" }[j.stato];
+    const col = j.stato === "errore" ? "var(--rosso)" : j.stato === "fatto" ? "var(--verde)" : "var(--blu)";
+    const nome = j.testo ? "Testo" : j.n === 1 ? j.nomi[0] : `${j.n} file`;
+    return `<div class="trasf"><div class="ic" style="background:color-mix(in srgb,${col} 15%,transparent);color:${col}">${j.stato === "fatto" ? I.ok : j.stato === "errore" ? I.attenzione : I.su}</div>
+      <div class="t"><b>${esc(nome)} → ${esc(j.verso)}</b><small style="${j.stato === "errore" ? "color:var(--rosso)" : ""}">${esc(st)}</small>
+      ${j.stato === "invio" || j.stato === "attesa" ? `<div class="barra-prog"><i style="width:${j.stato === "attesa" ? 3 : pct}%"></i></div>` : ""}</div>
+      ${j.stato === "invio" || j.stato === "attesa" ? `<button class="btn icona piccolo" data-azione="annullaInvio" data-id="${j.id}" title="Annulla">${I.x}</button>` : ""}</div>`;
+  }).join("") + "</div>";
+}
+
+function listaRicezioni() {
+  return S.ls.richieste.filter(r => r.stato === "ricezione" || r.stato === "accettata").map(r => {
+    const pct = r.totale ? Math.round(r.byte / r.totale * 100) : 0;
+    return `<div class="trasf"><div class="ic" style="background:color-mix(in srgb,var(--verde) 15%,transparent);color:var(--verde)">${I.su.replace("<svg", '<svg style="transform:rotate(180deg)"')}</div>
+      <div class="t"><b>Da ${esc(r.alias)} · ${r.file.length} file</b><small>Ricevo… ${pct}% · ${dim(r.byte)} di ${dim(r.totale)}</small><div class="barra-prog"><i style="width:${pct}%;background:var(--verde)"></i></div></div></div>`;
+  }).join("");
+}
+
+function renderSchermo() {
+  const sc = S.schermo, nome = S.conf.nome_pc;
+  set("#passo3", "Premi Avvia in questa pagina");
+  $("#onde").classList.toggle("on", sc.attivo && !sc.connesso);
+  $("#telSchermo").classList.toggle("spento", !sc.connesso);
+  let h;
+  if (!sc.installato) h = `<h3>Manca scrcpy</h3><p class="vuoto">Riesegui lo script di installazione dal terminale e scegli di installare scrcpy dal repository COPR zeno/scrcpy.</p>`;
+  else if (sc.attivo) h = `<h3>${sc.connesso ? "Schermo collegato" : "Avvio scrcpy…"}</h3><p class="vuoto">Schermo e controllo del Pixel in una finestra separata. Se non compare, leggi i dettagli tecnici qui sotto.</p><button class="btn rosso grande" data-azione="schermo">${I.stop}Ferma</button>`;
+  else h = `<h3>Il Pixel sul PC</h3><p class="vuoto">Collega un solo telefono, abilita Debug USB e autorizza Fedora sul Pixel. Poi premi Avvia.</p><button class="btn primario grande" data-azione="schermo">${I.play}Avvia</button>`;
+  set("#schermoStato", h);
+  const pre = $("#schermoLog"), txt = sc.log.join("\n") || "Nessun messaggio.";
+  if (pre.textContent !== txt) { pre.textContent = txt; pre.scrollTop = pre.scrollHeight; }
+}
+
+function renderCondividi() {
+  set("#avvisoLS2", avvisoLS());
+  const v = vicini(), dest = destinazione();
+  let h = v.map(d => `<div class="disp ${dest && d.fp === dest.fp ? "sel" : ""}" data-fp="${esc(d.fp)}" title="${esc(d.ip)}">
+      <div class="av" style="${d.tipo === "desktop" ? "background:linear-gradient(160deg,#9aa0a6,#5f6368)" : ""}">${d.tipo === "desktop" ? I.pc : esc(iniziale(d.alias))}</div>
+      <b>${esc(d.alias)}</b><small>${d.fidato ? "Tuo · " : ""}${esc(d.modello || (d.tipo === "mobile" ? "Telefono" : d.tipo))}</small></div>`).join("");
+  h += `<div class="disp" style="cursor:default"><div class="radar">${I.telefono}</div><b>${v.length ? "Cerco altri…" : "Cerco…"}</b><small>${v.length ? "" : "Apri LocalSend sul Pixel"}</small></div>`;
+  set("#vicini", h);
+
+  set("#coda", coda.map((f, i) => `<span class="chip">${iconaTipo(f.tipo).replace("<svg", '<svg width="14" height="14"')}${esc(f.nome)} <em style="font-style:normal;opacity:.6">${dim(f.size)}</em><button data-azione="togliCoda" data-i="${i}" title="Togli">${I.x}</button></span>`).join(""));
+  const b = $("#inviaCoda");
+  b.disabled = !coda.length || !dest;
+  $("#inviaCodaT").textContent = !coda.length ? "Invia" : dest ? `Invia a ${dest.alias}` : "Nessun dispositivo vicino";
+
+  const t = listaRicezioni() + (S.ls.invii.length ? listaInvii(S.ls.invii.slice(0, 6), false) : "");
+  set("#trasferimenti", t || `<p class="vuoto">Nessun trasferimento in corso.</p>`);
+
+  set("#messaggi", S.ls.messaggi.length ? S.ls.messaggi.slice(0, 6).map(bolla).join("")
+    : `<p class="vuoto">I testi che mandi dal Pixel con LocalSend (scheda Invia › Testo) compaiono qui, pronti da copiare.</p>`);
+
+  set("#ricevuti", S.recenti.length ? S.recenti.map(f => `<div class="riga cliccabile" draggable="true" data-file="${esc(f.path)}">
+      <div class="ic" style="background:${coloreTipo(f.tipo)}">${iconaTipo(f.tipo)}</div>
+      <div class="testo"><b>${esc(f.nome)}</b><small>${f.dir ? "Cartella" : dim(f.size)} · ${fa(f.mtime)}</small></div>
+      <button class="btn icona piccolo" data-azione="mostra" data-path="${esc(f.path)}" title="Mostra nella cartella">${I.cartella}</button></div>`).join("")
+    : `<div class="riga"><div class="testo"><b style="color:var(--txt2)">Ancora niente</b><small>Cartella: ${esc(S.conf.cartella)}</small></div></div>`);
+}
+
+function renderCavo() {
+  const cv = S.cavo, info = cv.info || {}, imp = cv.importa;
+  let h;
+  if (cv.stato === "mancante") h = `<div class="vetro card" style="text-align:center;padding:50px 22px"><div class="telefono spento" style="margin:0 auto 20px"></div><h3 style="font-size:22px">Mancano gli strumenti USB</h3><p class="vuoto" style="margin:6px 0 18px">Installali da Impostazioni › Componenti.</p><button class="btn primario" data-azione="vai" data-p="impostazioni">Vai a Impostazioni</button></div>`;
+  else if (cv.stato === "errore") h = `<div class="vetro card"><h3>Controlla il collegamento</h3><p>${esc(cv.errore)}</p></div>`;
+  else if (cv.stato === "assente") h = `<div class="vetro card" style="text-align:center;padding:50px 22px"><div class="telefono spento" style="margin:0 auto 20px"></div><h3 style="font-size:22px">Collega il Pixel con il cavo</h3><p class="vuoto" style="margin:6px auto 0;max-width:380px">Abilita Debug USB nelle Opzioni sviluppatore, collega un cavo dati e accetta «Consenti debug USB» sul Pixel.</p></div>`;
+  else if (cv.stato === "fiducia") h = `<div class="vetro card" style="text-align:center;padding:50px 22px"><div class="tasto-tondo" style="margin:0 auto 20px;background:linear-gradient(160deg,#ffb340,var(--arancio))">${I.lucchetto}</div><h3 style="font-size:22px">Autorizza questo computer</h3><p class="vuoto" style="margin:6px auto 18px;max-width:380px">Sul Pixel sblocca lo schermo e accetta «Consenti debug USB». Poi premi Riprova.</p><button class="btn primario" data-azione="associa">Riprova</button></div>`;
+  else {
+    const batt = +info.BatteryCurrentCapacity || 0, carica = info.BatteryIsCharging === "true";
+    const tot = +info.TotalDiskCapacity || 0, lib = +info.AmountDataAvailable || 0, usato = tot ? Math.round((tot - lib) / tot * 100) : 0;
+    const pct = imp.tot ? Math.round(imp.fatti / imp.tot * 100) : 0;
+    h = `<div class="griglia">
+      <div class="vetro card c12"><div class="pixel"><div class="telefono"></div><div class="info">
+        <h3 style="font-size:28px">${esc(info.DeviceName || "Pixel")}</h3><div class="sub">${esc(MODELLI[info.ProductType] || info.ProductType || "Pixel")} · Android ${esc(info.ProductVersion)}</div>
+        <span class="chip ok"><i></i>Collegato tramite ADB</span></div></div></div>
+      <div class="vetro card c6"><h2>Batteria</h2><div class="anello"><svg viewBox="0 0 44 44" style="width:64px;height:64px"><circle cx="22" cy="22" r="18" stroke="var(--riempi)" stroke-width="5" fill="none"/>
+        <circle cx="22" cy="22" r="18" stroke="${batt <= 20 ? "var(--rosso)" : "var(--verde)"}" stroke-width="5" fill="none" stroke-linecap="round" stroke-dasharray="${(batt / 100 * 113).toFixed(1)} 113"/></svg>
+        <div><b style="font-size:26px">${batt ? batt + "%" : "—"}</b><small>${carica ? "In carica" : "Non in carica"}</small></div></div></div>
+      <div class="vetro card c6"><h2>Spazio</h2>${tot ? `<div class="spazio"><b style="font-size:26px">${dim(lib)}</b> <span class="vuoto">liberi</span><div class="barra-prog" style="height:10px"><i style="width:${usato}%;background:${usato > 90 ? "var(--rosso)" : "var(--blu)"}"></i></div><small>usati ${dim(tot - lib)} di ${dim(tot)}</small></div>` : `<p class="vuoto">Non disponibile</p>`}</div>
+      <div class="vetro card c8"><h2>Foto e video</h2>
+        <p class="vuoto" style="margin-bottom:14px">Importo DCIM locale (salto i file con stesso percorso e dimensione) in <b>${esc(cv.destinazione)}</b>. Sul Pixel non cancello niente.</p>
+        ${imp.attivo ? `<div class="barra-prog" style="height:10px"><i style="width:${imp.tot ? pct : 4}%"></i></div><p class="vuoto" style="margin-top:8px">${esc(imp.msg)} ${imp.tot ? `${imp.fatti} di ${imp.tot}` : ""}</p>`
+        : `<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primario" data-azione="importa">${I.su.replace("<svg", '<svg style="transform:rotate(180deg)"')}Importa foto e video</button><button class="btn" data-azione="apriCartella" data-q="foto">${I.cartella}Apri la cartella</button></div>
+           ${imp.msg ? `<p class="vuoto" style="margin-top:10px">${esc(imp.msg)}</p>` : ""}`}</div>
+      <div class="vetro card c4"><h2>File</h2><p class="vuoto" style="margin-bottom:14px">Sul Pixel seleziona USB › Trasferimento file. Poi apri il telefono in File. Le cartelle private delle app non sono accessibili.</p><button class="btn" data-azione="cavoApri">${I.cartella}Apri in File</button></div>
+    </div>`;
+  }
+  set("#cavo", h);
+}
+
+function renderImpostazioni() {
+  const c = S.conf;
+  document.querySelectorAll("[data-conf]").forEach(i => { if (document.activeElement !== i) i.checked = !!c[i.dataset.conf]; });
+  document.querySelectorAll("[data-conf-testo]").forEach(i => { if (document.activeElement !== i) i.value = c[i.dataset.confTesto]; });
+  document.querySelectorAll("#segTema button").forEach(b => b.classList.toggle("on", b.dataset.v === c.tema));
+  if (!applicaAspetto.trascina) $("#vetro").value = c.vetro;
+  set("#impCartella", esc(c.cartella));
+  set("#impFoto", esc(c.cartella_foto));
+  set("#fidati", S.fidati.length ? `<div class="sezione">I miei dispositivi</div><div class="vetro lista">` + S.fidati.map(f =>
+    `<div class="riga"><div class="ic" style="background:linear-gradient(160deg,#7aa2ff,#5e5ce6)">${I.telefono}</div><div class="testo"><b>${esc(f.alias)}</b><small>Accetto i file senza chiedere</small></div>
+     <button class="btn piccolo" data-azione="togliFidato" data-fp="${esc(f.fp)}">Rimuovi</button></div>`).join("") + "</div>" : "");
+  set("#componenti", S.componenti.map(k => `<div class="riga"><div class="ic" style="background:${k.ok ? "var(--verde)" : "var(--arancio)"}">${k.ok ? I.ok : I.attenzione}</div>
+    <div class="testo"><b>${esc(k.nome)}</b><small>${esc(k.desc)}</small></div><span class="val">${k.ok ? "Pronto" : "Manca"}</span></div>`).join(""));
+  const manca = S.componenti.some(k => !k.ok), ins = S.installazione;
+  set("#installa", ins.attiva ? "Installo…" : manca ? "Installa mancanti" : esc(ins.msg || ""));
+  $("#installa").dataset.azione = manca && !ins.attiva ? "installa" : "";
+  const r = S.rete;
+  set("#rete", `<div class="riga"><div class="ic" style="background:var(--blu)">${I.wifi}</div><div class="testo"><b>Connessione</b></div><span class="val">${esc(r.nome || "—")}${r.hotspot ? " · hotspot Pixel" : ""}</span></div>
+    <div class="riga"><div class="ic" style="background:#8e8e93">${I.rete}</div><div class="testo"><b>Indirizzo del PC</b></div><span class="val" style="user-select:text">${esc(r.ip.join(", ") || "—")}</span></div>
+    <div class="riga"><div class="ic" style="background:${S.ls.attivo ? "var(--verde)" : "var(--rosso)"}">${I.lucchetto}</div><div class="testo"><b>Ricezione LocalSend</b><small>${S.ls.protocollo === "https" ? "Connessione cifrata" : "Connessione non cifrata"} · porta 53317</small></div><span class="val">${S.ls.attivo ? "Attiva" : "Spenta"}</span></div>`);
+  set("#versione", `Pixel Hub ${esc(S.versione)} · fatto con scrcpy, LocalSend e ADB`);
+}
+
+/* ------------------------------------------------------------ sheet richieste */
+function renderSheet() {
+  const r = S.ls.richieste.find(x => x.stato === "attesa");
+  const velo = $("#velo");
+  if (!r) { if (sheetId) { velo.classList.remove("on"); sheetId = null; } return; }
+  if (sheetId === r.id) return;
+  sheetId = r.id;
+  const n = r.file.length;
+  set("#sheet", `<div class="av">${esc(iniziale(r.alias))}</div>
+    <h3>${esc(r.alias)}</h3><p>vuole inviarti ${n === 1 ? "un file" : n + " file"} · ${dim(r.totale)}</p>
+    <div class="files">${r.file.slice(0, 50).map(f => `<div>${iconaTipo(f.tipo)}<span>${esc(f.nome)}</span><em>${dim(f.size)}</em></div>`).join("")}${n > 50 ? `<div><span>…e altri ${n - 50}</span></div>` : ""}</div>
+    <div class="azioni"><button class="btn" data-azione="rifiuta">Rifiuta</button><button class="btn primario" data-azione="accetta">Accetta</button></div>
+    <label><span class="sw" style="transform:scale(.8)"><input type="checkbox" id="fidatiCk"><span></span></span>È il mio Pixel: accetta sempre senza chiedere</label>`);
+  velo.classList.add("on");
+}
+
+/* ------------------------------------------------------------ azioni */
+const AZ = {
+  async schermo() { const on = S.schermo.attivo; const r = await api("schermo", { azione: on ? "ferma" : "avvia" }); if (!on && !r.ok) toast("Non riesco ad avviare scrcpy", "warn"); aggiorna(); },
+  vai(e) { vai(e.dataset.p); },
+  async riprovaLS() { const r = await api("ls/riprova"); toast(r.ok ? "Ricezione attiva" : "Ancora occupata: chiudi LocalSend per PC", r.ok ? "ok" : "warn"); aggiorna(); },
+  async accetta() { await api("richiesta", { id: sheetId, accetta: true, fidati: $("#fidatiCk")?.checked }); $("#velo").classList.remove("on"); toast("Ricevo i file…"); aggiorna(); },
+  async rifiuta() { await api("richiesta", { id: sheetId, accetta: false }); $("#velo").classList.remove("on"); aggiorna(); },
+  async copia(e) { const m = S.ls.messaggi.find(x => x.id === e.dataset.id); if (m) { await copiaTesto(m.testo); toast("Copiato negli appunti"); } },
+  apriLink(e) { const m = S.ls.messaggi.find(x => x.id === e.dataset.id); if (m) location.href = m.testo.trim(); },
+  async annullaInvio(e) { await api("invio/annulla", { id: e.dataset.id }); },
+  togliCoda(e) { coda.splice(+e.dataset.i, 1); renderCondividi(); },
+  async mostra(e, ev) { ev.stopPropagation(); await api("mostra", { path: e.dataset.path }); },
+  async apriCartella(e) { await api("apri-cartella", { quale: e.dataset.q === "foto" ? "foto" : "file" }); },
+  async scegliCartella(e) { const r = await api("scegli-cartella", { quale: e.dataset.q }); if (r.ok) { toast("Cartella aggiornata"); aggiorna(); } },
+  async togliFidato(e) { await api("fidato/rimuovi", { fp: e.dataset.fp }); aggiorna(); },
+  async installa() { await api("installa"); toast("Ti chiedo la password di Fedora…"); aggiorna(); },
+  async importa() { const r = await api("cavo/importa"); if (!r.ok) toast("Non riesco: sblocca il Pixel e riprova", "warn"); aggiorna(); },
+  async cavoApri() { await api("cavo/apri"); },
+  async associa() { const r = await api("cavo/associa"); toast(r.ok ? "Autorizzato" : "Sblocca il Pixel e accetta «Consenti debug USB»", r.ok ? "ok" : "warn"); aggiorna(); },
+};
+document.addEventListener("click", ev => {
+  const el = ev.target.closest("[data-azione]");
+  if (el && el.dataset.azione && AZ[el.dataset.azione]) { AZ[el.dataset.azione](el, ev); return; }
+  const d = ev.target.closest(".disp[data-fp]");
+  if (d) { destSel = d.dataset.fp; render(); return; }
+  const f = ev.target.closest("[data-file]");
+  if (f) api("apri", { path: f.dataset.file });
+});
+async function copiaTesto(t) {
+  try { await navigator.clipboard.writeText(t); return; } catch (e) {}
+  const a = document.createElement("textarea"); a.value = t; document.body.appendChild(a); a.select(); document.execCommand("copy"); a.remove();
+}
+
+/* impostazioni */
+document.querySelectorAll("[data-conf]").forEach(i => i.addEventListener("change", async () => {
+  await api("conf", { [i.dataset.conf]: i.checked }); aggiorna();
+}));
+document.querySelectorAll("[data-conf-testo]").forEach(i => {
+  const salva = async () => { const v = i.value.trim(); if (v && v !== S.conf[i.dataset.confTesto]) { await api("conf", { [i.dataset.confTesto]: v }); toast("Nome salvato"); aggiorna(); } };
+  i.addEventListener("change", salva);
+  i.addEventListener("keydown", e => { if (e.key === "Enter") i.blur(); });
+});
+document.querySelectorAll("#segTema button").forEach(b => b.onclick = async () => { S.conf.tema = b.dataset.v; render(); await api("conf", { tema: b.dataset.v }); });
+const vetro = $("#vetro");
+vetro.addEventListener("input", () => { applicaAspetto.trascina = true; document.documentElement.style.setProperty("--tint", (vetro.value / 100).toFixed(2)); });
+vetro.addEventListener("change", async () => { await api("conf", { vetro: +vetro.value }); S.conf.vetro = +vetro.value; applicaAspetto.trascina = false; });
+
+/* testo */
+$("#homeIncolla").onclick = async () => {
+  try { $("#homeTesto").value = await navigator.clipboard.readText(); } catch (e) { $("#homeTesto").focus(); toast("Premi Ctrl+V per incollare", "warn"); }
+};
+$("#homeInviaTesto").onclick = async () => {
+  const t = $("#homeTesto").value; const d = destinazione();
+  if (!t.trim()) { $("#homeTesto").focus(); return; }
+  if (!d) { toast("Apri LocalSend sul Pixel", "warn"); return; }
+  const r = await api("invia", { fp: d.fp, testo: t });
+  if (r.ok) { toast("Testo inviato a " + d.alias); $("#homeTesto").value = ""; } else toast("Invio non riuscito", "warn");
+  aggiorna();
+};
+
+/* cerca */
+$("#cerca").onclick = async () => { toast("Cerco dispositivi…"); const r = await api("cerca"); aggiorna(); if (r.trovati) toast("Trovato!"); };
+$("#ipVai").onclick = async () => {
+  const ip = $("#ipManuale").value.trim();
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) { toast("Scrivi un indirizzo come 192.168.1.50", "warn"); return; }
+  const r = await api("cerca", { ip }); toast(r.trovati ? "Collegato" : "Non risponde: LocalSend è aperto sul Pixel?", r.trovati ? "ok" : "warn"); aggiorna();
+};
+
+/* ------------------------------------------------------------ file: scegli e trascina */
+let scopoScelta = "coda";
+$("#homeDrop").onclick = () => { scopoScelta = "subito"; $("#sceltaFile").click(); };
+$("#condDrop").onclick = () => { scopoScelta = "coda"; $("#sceltaFile").click(); };
+$("#sceltaFile").onchange = e => { prendiFile([...e.target.files], scopoScelta === "subito" ? destinazione() : null, scopoScelta === "subito"); e.target.value = ""; };
+
+async function prendiFile(files, dest, subito) {
+  if (!files.length) return;
+  if (subito && !dest) { toast("Nessun Pixel vicino: li metto in coda", "warn"); subito = false; }
+  const pronti = [];
+  for (const f of files) {
+    if (!f.size && !f.type) { toast(`«${f.name}» è una cartella: comprimila e riprova`, "warn"); continue; }
+    try {
+      const r = await fetch(`/api/prepara?nome=${encodeURIComponent(f.name)}`, { method: "POST", headers: { "X-Token": T }, body: f });
+      const j = await r.json();
+      if (j.path) pronti.push({ nome: j.nome, size: j.size, path: j.path, tipo: tipoDa(j.nome) });
+    } catch (e) { toast("Non riesco a leggere " + f.name, "warn"); }
+  }
+  if (!pronti.length) return;
+  if (subito) {
+    const r = await api("invia", { fp: dest.fp, percorsi: pronti.map(p => p.path) });
+    toast(r.ok ? `Invio a ${dest.alias}: accetta sul Pixel` : "Invio non riuscito", r.ok ? "ok" : "warn");
+    aggiorna();
+  } else { coda.push(...pronti); if (pagina !== "condividi") vai("condividi"); else renderCondividi(); }
+}
+function tipoDa(n) {
+  const e = (n.split(".").pop() || "").toLowerCase();
+  if (["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp"].includes(e)) return "foto";
+  if (["mov", "mp4", "m4v", "mkv", "webm", "avi"].includes(e)) return "video";
+  if (["mp3", "m4a", "wav", "aac", "flac", "ogg"].includes(e)) return "audio";
+  if (e === "pdf") return "pdf";
+  if (["zip", "rar", "7z", "gz", "tar"].includes(e)) return "archivio";
+  return "file";
+}
+$("#inviaCoda").onclick = async () => {
+  const d = destinazione(); if (!d || !coda.length) return;
+  const r = await api("invia", { fp: d.fp, percorsi: coda.map(c => c.path) });
+  if (r.ok) { toast(`Invio a ${d.alias}: accetta sul Pixel`); coda = []; } else toast("Invio non riuscito", "warn");
+  aggiorna();
+};
+
+// trascinamento dal desktop dentro l'app
+let conta = 0;
+const haFile = e => [...(e.dataTransfer?.types || [])].includes("Files");
+document.addEventListener("dragenter", e => {
+  if (!haFile(e)) return; e.preventDefault(); conta++;
+  const d = destinazione();
+  $("#rilascioT").textContent = d ? `Rilascia per inviare a ${d.alias}` : "Rilascia per aggiungerli";
+  $("#rilascioS").textContent = d ? "oppure lasciali sul dispositivo che preferisci in Condividi" : "Apri LocalSend sul Pixel per inviarli";
+  $("#rilascio").classList.add("on");
+});
+document.addEventListener("dragleave", e => { if (!haFile(e)) return; if (--conta <= 0) { conta = 0; $("#rilascio").classList.remove("on"); } });
+document.addEventListener("dragover", e => {
+  if (!haFile(e)) return; e.preventDefault();
+  document.querySelectorAll(".disp.sopra").forEach(x => x.classList.remove("sopra"));
+  const d = e.target.closest?.(".disp[data-fp]"); if (d) d.classList.add("sopra");
+});
+document.addEventListener("drop", e => {
+  if (!haFile(e)) return; e.preventDefault(); conta = 0; $("#rilascio").classList.remove("on");
+  const files = [...e.dataTransfer.files];
+  const su = e.target.closest?.(".disp[data-fp]");
+  document.querySelectorAll(".disp.sopra").forEach(x => x.classList.remove("sopra"));
+  if (su) { const d = vicini().find(x => x.fp === su.dataset.fp); prendiFile(files, d, true); return; }
+  if (pagina === "condividi") prendiFile(files, null, false);
+  else prendiFile(files, destinazione(), true);
+});
+// trascinamento dall'app verso il desktop
+document.addEventListener("dragstart", e => {
+  const f = e.target.closest?.("[data-file]"); if (!f) return;
+  const uri = "file://" + f.dataset.file.split("/").map(encodeURIComponent).join("/");
+  e.dataTransfer.effectAllowed = "copy";
+  e.dataTransfer.setData("text/uri-list", uri);
+  e.dataTransfer.setData("text/plain", f.dataset.file);
+});
+
+/* ------------------------------------------------------------ ciclo */
+async function aggiorna() {
+  try {
+    const r = await fetch("/api/stato", { headers: { "X-Token": T } });
+    if (!r.ok) throw 0;
+    S = await r.json();
+    render();
+  } catch (e) { /* il motore si sta riavviando */ }
+}
+icone();
+try { const p = localStorage.getItem("hub.pagina"); if (p && document.querySelector(`.pagina[data-p="${p}"]`)) vai(p); } catch (e) {}
+let wizardOpen = false, wizardBusy = false;
+function wizardRender() {
+  const show = !S.pairing.ready || wizardOpen;
+  const ch = S.pairing.challenge || {};
+  $('#wConfirm').disabled = wizardBusy || !ch.active;
+  $('#wSend').disabled = wizardBusy;
+  $('#wCountdown').textContent = ch.active ? `Codice per ${ch.alias}: ${Math.floor(ch.seconds / 60)}:${String(ch.seconds % 60).padStart(2, '0')} rimanenti · ${ch.attempts} tentativi.` : 'Premi Invia codice al Pixel selezionato per iniziare o riprovare.';
+  $('#wizard').style.display = show ? 'block' : 'none';
+  $('#main').inert = show;
+  const paired = !!S.pairing.fp;
+  $('#wizardPair').style.display = paired ? 'none' : 'block';
+  $('#wizardADB').style.display = paired ? 'block' : 'none';
+  $('#wPaired').textContent = paired ? `LocalSend associato: ${S.pairing.alias}. Impronta: ${S.pairing.fp}` : '';
+}
+function wizardOptions(id, list, key, label, placeholder) {
+ const el = $(id), previous = el.value;
+ el.replaceChildren(new Option(placeholder, ''));
+ for (const item of list) el.add(new Option(label(item), item[key]));
+ if ([...el.options].some(o => o.value === previous)) el.value = previous;
+}
+async function wizardCall(path, data) {
+ $('#wStatus').textContent = 'Operazione in corso…';
+ const r = await api('pairing/' + path, data);
+ $('#wStatus').textContent = r.ok ? 'Operazione completata.' : (r.errore || 'Operazione non riuscita.');
+ return r;
+}
+async function wizardRefresh() {
+ const r = await wizardCall('lista');
+ if (!r.ok) return;
+ wizardOptions('#wBTChoice', r.bluetooth, 'mac', b => `${b.nome} — ${b.mac}`, 'Salta Bluetooth');
+ wizardOptions('#wDevice', r.devices, 'fp', d => `${d.alias} — ${d.modello || 'telefono'} — ${d.ip} — ${d.fp.slice(0,12)}`, 'Seleziona esplicitamente il Pixel…');
+ wizardOptions('#wADB', r.adb, 'serial', d => `${d.model} — ${d.serial} — identità ${d.hardware}`, 'Per ora usa solo LocalSend');
+}
+$('#wBT').onclick = () => wizardCall('bluetooth');
+$('#wRefresh').onclick = wizardRefresh;
+$('#wRefreshADB').onclick = wizardRefresh;
+$('#wFind').onclick = async () => { await api('cerca', {ip: $('#wIP').value.trim()}); await wizardRefresh(); };
+$('#wSend').onclick = async () => {
+ if (wizardBusy) return;
+ wizardBusy = true; wizardRender();
+ try {
+  const r = await wizardCall('inizia', {fp: $('#wDevice').value, bluetooth: $('#wBTChoice').value});
+  if (r.ok) $('#wStatus').textContent = `Leggi in LocalSend sul Pixel (${r.alias}) il messaggio “Pixel Hub — codice di associazione”. Riporta quel codice nel primo campo e scegli tu un PIN nel secondo.`;
+ } finally { wizardBusy = false; await aggiorna(); }
+};
+$('#wConfirm').onclick = async () => {
+ if (wizardBusy) return;
+ wizardBusy = true; wizardRender();
+ try {
+  const r = await wizardCall('conferma', {code: $('#wCode').value.trim(), pin: $('#wPIN').value});
+  if (r.ok) { $('#wCode').value = ''; $('#wPIN').value = ''; await aggiorna(); await wizardRefresh(); }
+ } finally { wizardBusy = false; await aggiorna(); }
+};
+$('#wWiFi').onclick = async () => {
+ const r = await wizardCall('wifi', {pair: $('#wPairAddr').value.trim(), connect: $('#wConnectAddr').value.trim(), code: $('#wADBCode').value.trim()});
+ $('#wADBCode').value = '';
+ if (r.ok) await wizardRefresh();
+};
+$('#wFinish').onclick = async () => {
+ const r = await wizardCall('fine', {serial: $('#wADB').value});
+ if (r.ok) {wizardOpen = false; await aggiorna();}
+};
+
+$('#configurePixel').onclick = async () => { wizardOpen = true; wizardRender(); await wizardRefresh(); };
+aggiorna().then(wizardRefresh);
+(function ciclo() { setTimeout(() => aggiorna().finally(ciclo), document.hidden ? 4000 : 1000); })();
+document.addEventListener("keydown", e => {
+  if (e.ctrlKey && /^[1-5]$/.test(e.key)) vai(["home", "schermo", "condividi", "pixel", "impostazioni"][+e.key - 1]);
+});
+</script>
+</body>
+</html>

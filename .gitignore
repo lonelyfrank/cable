@@ -1,0 +1,17 @@
+/target/
+/vendor/
+packaging/*-vendor.tar.xz
+__pycache__/
+*.pyc
+*.tmp
+
+# Mai pubblicare: chiavi, certificati, segreti, dati locali, screenshot (mostrano il nome utente)
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+.env*
+settings.json
+identity/
+docs/screenshots*/

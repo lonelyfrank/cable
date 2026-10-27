@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixel Hub</title>
+<style>
+:root{
+  --tint:.45;
+  --font:"SF Pro Text","SF Pro Display","Inter","Fedora Sans",system-ui,-apple-system,sans-serif;
+  --bg:#eef1f7;
+  --txt:#0b0b0f; --txt2:rgba(20,20,30,.62); --txt3:rgba(20,20,30,.38);
+  --sep:rgba(20,20,40,.10);
+  --blu:#007aff; --verde:#28c840; --rosso:#ff3b30; --arancio:#ff9500; --viola:#af52de;
+  --glass:rgba(255,255,255,calc(.20 + var(--tint)*.52));
+  --glass-forte:rgba(255,255,255,calc(.42 + var(--tint)*.45));
+  --edge:rgba(0,0,0,.16);
+  --spec:rgba(255,255,255,.85);
+  --ombra:0 18px 40px -18px rgba(30,40,80,.30);
+  --riempi:rgba(120,120,135,.13);
+  --b1:#8fb4ff; --b2:#c8a2ff; --b3:#ffb2d0; --b4:#8fe6dc;
+  color-scheme:light;
+}
+:root[data-tema="scuro"]{
+  --bg:#07080d;
+  --txt:#f5f5f7; --txt2:rgba(235,235,245,.62); --txt3:rgba(235,235,245,.34);
+  --sep:rgba(255,255,255,.10);
+  --blu:#0a84ff; --verde:#30d158; --rosso:#ff453a; --arancio:#ff9f0a; --viola:#bf5af2;
+  --glass:rgba(30,30,38,calc(.28 + var(--tint)*.52));
+  --glass-forte:rgba(44,44,54,calc(.50 + var(--tint)*.40));
+  --edge:rgba(0,0,0,.55);
+  --spec:rgba(255,255,255,.22);
+  --ombra:0 22px 48px -20px rgba(0,0,0,.65);
+  --riempi:rgba(120,120,135,.22);
+  --b1:#1f4fd8; --b2:#6a2bd1; --b3:#b0306f; --b4:#0f7f78;
+  color-scheme:dark;
+}
+:root[data-tema="scuro"] .sfondo i{opacity:.55}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font);background:var(--bg);color:var(--txt);font-size:15px;
+  -webkit-font-smoothing:antialiased;letter-spacing:-.01em;user-select:none;-webkit-user-select:none}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+::selection{background:color-mix(in srgb,var(--blu) 30%,transparent)}
+
+/* ---------- sfondo vivo ---------- */
+.sfondo{position:fixed;inset:-20%;z-index:0;filter:blur(70px) saturate(130%);pointer-events:none}
+.sfondo i{position:absolute;border-radius:50%;opacity:.85;animation:vaga 38s ease-in-out infinite alternate}
+.sfondo i:nth-child(1){width:52vw;height:52vw;left:2%;top:0;background:var(--b1)}
+.sfondo i:nth-child(2){width:46vw;height:46vw;right:0;top:8%;background:var(--b2);animation-duration:44s;animation-delay:-8s}
+.sfondo i:nth-child(3){width:40vw;height:40vw;left:30%;bottom:-4%;background:var(--b3);animation-duration:50s;animation-delay:-16s}
+.sfondo i:nth-child(4){width:30vw;height:30vw;left:-4%;bottom:6%;background:var(--b4);animation-duration:41s;animation-delay:-22s}
+@keyframes vaga{0%{transform:translate(0,0) scale(1)}50%{transform:translate(6vw,4vh) scale(1.08)}100%{transform:translate(-5vw,-3vh) scale(.95)}}
+@media (prefers-reduced-motion:reduce){.sfondo i{animation:none}}
+
+/* ---------- vetro ---------- */
+.vetro{position:relative;background:var(--glass);
+  -webkit-backdrop-filter:blur(30px) saturate(185%);backdrop-filter:blur(30px) saturate(185%);
+  border-radius:28px;
+  box-shadow:0 0 0 .5px var(--edge),inset 0 1px 0 var(--spec),inset 0 -1px 0 rgba(255,255,255,.08),var(--ombra)}
+.vetro::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(140deg,rgba(255,255,255,.35),rgba(255,255,255,0) 38%,rgba(255,255,255,0) 70%,rgba(255,255,255,.12));
+  mix-blend-mode:soft-light}
+
+/* ---------- struttura ---------- */
+main{position:relative;z-index:1;height:100%;overflow-y:auto;overflow-x:hidden;scroll-behavior:smooth}
+.barra{position:sticky;top:0;z-index:5;height:52px;display:flex;align-items:center;justify-content:center;
+  transition:background .25s,box-shadow .25s}
+.barra span{font-weight:600;font-size:15px;opacity:0;transform:translateY(4px);transition:.25s}
+.barra.su{background:color-mix(in srgb,var(--bg) 55%,transparent);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);
+  box-shadow:0 .5px 0 var(--sep)}
+.barra.su span{opacity:1;transform:none}
+.pagina{display:none;max-width:1100px;margin:0 auto;padding:0 28px 130px}
+.pagina.on{display:block;animation:entra .35s cubic-bezier(.2,.8,.2,1)}
+@keyframes entra{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.titolo{padding:6px 4px 20px}
+.titolo h1{font-size:36px;font-weight:700;letter-spacing:-.025em;line-height:1.1}
+.titolo p{color:var(--txt2);font-size:16px;margin-top:6px}
+.griglia{display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
+.c12{grid-column:span 12}.c7{grid-column:span 7}.c5{grid-column:span 5}.c6{grid-column:span 6}.c4{grid-column:span 4}.c8{grid-column:span 8}
+@media (max-width:860px){.c7,.c5,.c6,.c4,.c8{grid-column:span 12}.pagina{padding:0 16px 130px}.titolo h1{font-size:30px}}
+.card{padding:22px}
+.card h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--txt2);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card h2 .dx{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500}
+.sezione{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--txt2);margin:28px 6px 10px}
+.vuoto{color:var(--txt2);font-size:14px;line-height:1.45}
+
+/* ---------- controlli ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;border-radius:999px;
+  font-weight:600;font-size:15px;background:var(--riempi);transition:transform .15s,filter .15s,background .2s}
+.btn:hover{filter:brightness(1.06)}
+.btn:active{transform:scale(.96)}
+.btn.primario{background:var(--blu);color:#fff;box-shadow:0 6px 18px -6px color-mix(in srgb,var(--blu) 70%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+.btn.rosso{background:var(--rosso);color:#fff}
+.btn.grande{height:52px;padding:0 26px;font-size:17px}
+.btn.piccolo{height:32px;padding:0 13px;font-size:13px}
+.btn.icona{width:36px;padding:0}
+.btn[disabled]{opacity:.45;pointer-events:none}
+.btn svg{width:18px;height:18px}
+.link{color:var(--blu);font-weight:500;cursor:pointer}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;font-size:12.5px;font-weight:600;background:var(--riempi);color:var(--txt2)}
+.chip.ok{background:color-mix(in srgb,var(--verde) 18%,transparent);color:var(--verde)}
+.chip.blu{background:color-mix(in srgb,var(--blu) 16%,transparent);color:var(--blu)}
+.chip.warn{background:color-mix(in srgb,var(--arancio) 18%,transparent);color:var(--arancio)}
+.chip i{width:7px;height:7px;border-radius:50%;background:currentColor}
+.chip i.pulsa{animation:pulsa 1.6s ease-in-out infinite}
+@keyframes pulsa{50%{opacity:.25}}
+
+/* liste raggruppate stile Impostazioni */
+.lista{overflow:hidden;padding:0}
+.riga{display:flex;align-items:center;gap:14px;min-height:54px;padding:10px 18px;position:relative}
+.riga+.riga::before{content:"";position:absolute;top:0;left:62px;right:0;height:.5px;background:var(--sep)}
+.lista.senza-icone .riga+.riga::before{left:18px}
+.riga .ic{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:#fff;flex:none}
+.riga .ic svg{width:18px;height:18px}
+.riga .testo{flex:1;min-width:0}
+.riga .testo b{display:block;font-weight:500;font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.riga .testo small{display:block;color:var(--txt2);font-size:13px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.riga .val{color:var(--txt2);font-size:14.5px}
+.riga.cliccabile{cursor:pointer}
+.riga.cliccabile:hover{background:var(--riempi)}
+.freccia{color:var(--txt3);width:16px;height:16px}
+.input{height:36px;border-radius:10px;border:0;background:var(--riempi);padding:0 12px;outline:none;min-width:0;width:220px;text-align:right}
+.input:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--blu) 35%,transparent);text-align:left}
+
+/* interruttore iOS */
+.sw{position:relative;width:51px;height:31px;flex:none}
+.sw input{opacity:0;width:0;height:0;position:absolute}
+.sw span{position:absolute;inset:0;border-radius:999px;background:var(--riempi);transition:.25s;cursor:pointer;box-shadow:inset 0 0 0 .5px var(--sep)}
+.sw span::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;
+  box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);transition:.25s cubic-bezier(.3,1.4,.5,1)}
+.sw input:checked+span{background:var(--verde)}
+.sw input:checked+span::after{transform:translateX(20px)}
+
+/* segmentato */
+.seg{display:inline-flex;background:var(--riempi);border-radius:10px;padding:2px;gap:2px}
+.seg button{height:30px;padding:0 14px;border-radius:8px;font-size:13.5px;font-weight:500;color:var(--txt2)}
+.seg button.on{background:var(--glass-forte);color:var(--txt);box-shadow:0 3px 8px rgba(0,0,0,.12),0 0 0 .5px var(--edge)}
+
+/* cursore vetro */
+.cursore{display:flex;align-items:center;gap:12px;width:100%}
+.cursore small{color:var(--txt2);font-size:12.5px;white-space:nowrap}
+input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:6px;border-radius:99px;
+  background:linear-gradient(90deg,rgba(255,255,255,.35),var(--blu));outline:none;box-shadow:inset 0 0 0 .5px var(--edge)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;border-radius:50%;background:#fff;
+  box-shadow:0 3px 10px rgba(0,0,0,.25),0 0 0 .5px rgba(0,0,0,.1);cursor:grab}
+input[type=range]::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:#fff;border:0;box-shadow:0 3px 10px rgba(0,0,0,.25)}
+
+.barra-prog{height:6px;border-radius:99px;background:var(--riempi);overflow:hidden}
+.barra-prog i{display:block;height:100%;background:var(--blu);border-radius:99px;transition:width .4s}
+
+/* ---------- tab bar fluttuante ---------- */
+.tabbar{position:fixed;z-index:20;left:50%;bottom:18px;transform:translateX(-50%);display:flex;gap:2px;padding:6px;border-radius:999px}
+.tab{position:relative;width:86px;height:56px;border-radius:999px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  font-size:11px;font-weight:600;color:var(--txt2);transition:color .2s}
+.tab svg{width:23px;height:23px}
+.tab.on{color:var(--blu);background:var(--riempi);box-shadow:inset 0 1px 0 var(--spec)}
+.tab .punto{position:absolute;top:8px;right:22px;min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--rosso);color:#fff;font-size:10px;line-height:16px;display:none}
+.tab .punto.on{display:block}
+@media (max-width:520px){.tab{width:64px}.tab span{font-size:10px}}
+
+/* ---------- home ---------- */
+.telefono{position:relative;width:92px;height:184px;border-radius:24px;flex:none;
+  background:linear-gradient(160deg,#30323a,#0c0d10);box-shadow:0 0 0 2px rgba(255,255,255,.2) inset,0 18px 30px -12px rgba(0,0,0,.45)}
+.telefono::before{content:"";position:absolute;inset:5px;border-radius:19px;background:var(--schermo,linear-gradient(160deg,#5b8def,#a46cf5 55%,#f37fb4))}
+.telefono::after{content:"";position:absolute;top:10px;left:50%;transform:translateX(-50%);width:28px;height:8px;border-radius:9px;background:#000}
+.telefono.spento::before{background:linear-gradient(160deg,#2b2d35,#15161a)}
+.pixel{display:flex;gap:26px;align-items:center}
+.pixel .info{flex:1;min-width:0}
+.pixel h3{font-size:24px;font-weight:700;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pixel .sub{color:var(--txt2);margin:4px 0 12px}
+.misure{display:flex;gap:22px;margin-top:16px;flex-wrap:wrap}
+.anello{display:flex;align-items:center;gap:10px}
+.anello svg{width:44px;height:44px;transform:rotate(-90deg)}
+.anello b{display:block;font-size:17px}
+.anello small{color:var(--txt2);font-size:12px}
+.spazio{flex:1;min-width:160px}
+.spazio .barra-prog{height:8px;margin:8px 0 5px}
+.spazio small{color:var(--txt2);font-size:12px}
+
+.mirror{display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;height:100%;justify-content:center}
+.tasto-tondo{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;color:#fff;
+  background:linear-gradient(160deg,color-mix(in srgb,var(--blu) 80%,#fff),var(--blu));
+  box-shadow:0 14px 30px -10px color-mix(in srgb,var(--blu) 80%,transparent),inset 0 1px 0 rgba(255,255,255,.5),0 0 0 .5px var(--edge);transition:transform .2s}
+.tasto-tondo:active{transform:scale(.93)}
+.tasto-tondo svg{width:40px;height:40px}
+.tasto-tondo.attivo{background:linear-gradient(160deg,#ff7a6e,var(--rosso));box-shadow:0 14px 30px -10px rgba(255,59,48,.7),inset 0 1px 0 rgba(255,255,255,.5)}
+.tasto-tondo.attesa{animation:onda 2s ease-out infinite}
+@keyframes onda{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--rosso) 55%,transparent)}100%{box-shadow:0 0 0 22px transparent}}
+.mirror b{font-size:17px}
+.mirror small{color:var(--txt2);font-size:13.5px;max-width:280px;line-height:1.4}
+
+.drop{border-radius:22px;border:2px dashed color-mix(in srgb,var(--txt) 18%,transparent);padding:26px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;transition:.2s;cursor:pointer}
+.drop:hover,.drop.sopra{border-color:var(--blu);background:color-mix(in srgb,var(--blu) 8%,transparent)}
+.drop .ico{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;background:color-mix(in srgb,var(--blu) 14%,transparent);color:var(--blu)}
+.drop .ico svg{width:28px;height:28px}
+.drop b{font-size:16.5px}
+.drop small{color:var(--txt2);font-size:13.5px}
+
+textarea{width:100%;min-height:92px;resize:none;border:0;outline:none;border-radius:16px;background:var(--riempi);padding:12px 14px;line-height:1.4;font-size:15px}
+textarea:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--blu) 30%,transparent)}
+.bolla{background:var(--riempi);border-radius:18px 18px 18px 6px;padding:11px 14px;line-height:1.4;font-size:14.5px;word-break:break-word;white-space:pre-wrap;max-height:120px;overflow:auto;user-select:text;-webkit-user-select:text}
+.bolla-meta{display:flex;align-items:center;gap:8px;color:var(--txt2);font-size:12.5px;margin:6px 4px 12px}
+.bolla-meta .dx{margin-left:auto;display:flex;gap:6px}
+
+/* striscia di file recenti */
+.strip{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 8px;scrollbar-width:thin}
+.tile{flex:none;width:132px;cursor:pointer}
+.tile .img{width:132px;height:132px;border-radius:20px;background:var(--riempi) center/cover no-repeat;display:grid;place-items:center;color:var(--txt2);
+  box-shadow:0 0 0 .5px var(--edge),0 10px 24px -14px rgba(0,0,0,.4);transition:transform .2s}
+.tile:hover .img{transform:translateY(-3px)}
+.tile .img svg{width:38px;height:38px}
+.tile b{display:block;font-size:13px;font-weight:500;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile small{color:var(--txt2);font-size:12px}
+
+/* dispositivi vicini (stile AirDrop) */
+.vicini{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start;min-height:120px}
+.disp{width:104px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;cursor:pointer;border-radius:20px;padding:8px 4px;transition:.2s}
+.disp:hover,.disp.sopra{background:var(--riempi)}
+.disp.sel .av{box-shadow:0 0 0 3px var(--bg),0 0 0 5.5px var(--blu)}
+.av{width:70px;height:70px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:26px;font-weight:600;
+  background:linear-gradient(160deg,#7aa2ff,#5e5ce6);box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 10px 22px -10px rgba(40,40,120,.7);transition:box-shadow .2s}
+.av svg{width:32px;height:32px}
+.disp b{font-size:13px;font-weight:600;line-height:1.25;max-width:100px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.disp small{color:var(--txt2);font-size:11.5px}
+.radar{position:relative;width:70px;height:70px;border-radius:50%;display:grid;place-items:center;color:var(--blu);background:color-mix(in srgb,var(--blu) 12%,transparent)}
+.radar::before,.radar::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--blu);opacity:0;animation:radar 2.4s ease-out infinite}
+.radar::after{animation-delay:1.2s}
+@keyframes radar{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.5);opacity:0}}
+.radar svg{width:30px;height:30px}
+
+.coda{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.coda .chip{background:var(--glass-forte);color:var(--txt);box-shadow:0 0 0 .5px var(--edge);height:30px}
+.coda .chip button{opacity:.5;display:grid;place-items:center}
+.coda .chip button svg{width:14px;height:14px}
+
+.trasf{display:flex;gap:14px;align-items:center;padding:12px 0}
+.trasf+.trasf{border-top:.5px solid var(--sep)}
+.trasf .ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none}
+.trasf .ic svg{width:20px;height:20px}
+.trasf .t{flex:1;min-width:0}
+.trasf .t b{display:block;font-size:14.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trasf .t small{color:var(--txt2);font-size:12.5px}
+.trasf .barra-prog{margin-top:7px}
+
+/* passi */
+.passi{display:flex;flex-direction:column;gap:14px}
+.passo{display:flex;gap:14px;align-items:flex-start}
+.passo .n{width:30px;height:30px;border-radius:50%;flex:none;display:grid;place-items:center;font-weight:700;font-size:14px;color:#fff;background:var(--blu)}
+.passo b{display:block;font-weight:600}
+.passo small{color:var(--txt2);font-size:13.5px}
+.schermo-hero{display:flex;gap:34px;align-items:center}
+.schermo-hero .telefono{width:120px;height:240px;border-radius:30px}
+.schermo-hero .telefono::before{border-radius:25px}
+.schermo-hero .telefono::after{width:36px;height:10px;top:13px}
+.onde{position:relative}
+.onde .w{position:absolute;right:-30px;top:50%;width:26px;height:60px;transform:translateY(-50%);color:var(--blu);opacity:0}
+.onde.on .w{opacity:1;animation:pulsa 1.4s infinite}
+pre.log{font:12px/1.5 ui-monospace,"JetBrains Mono","Fedora Mono",monospace;background:var(--riempi);border-radius:14px;padding:12px;max-height:220px;overflow:auto;white-space:pre-wrap;color:var(--txt2);user-select:text;-webkit-user-select:text}
+details summary{cursor:pointer;color:var(--txt2);font-size:13.5px;list-style:none;padding:4px 2px}
+details summary::-webkit-details-marker{display:none}
+
+/* avviso */
+.avviso{display:flex;gap:14px;align-items:center;padding:16px 18px;margin-bottom:18px}
+.avviso .ic{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:var(--arancio);color:#fff;flex:none}
+.avviso .ic svg{width:20px;height:20px}
+.avviso .t{flex:1}
+.avviso b{display:block}
+.avviso small{color:var(--txt2);font-size:13px}
+
+/* ---------- sheet richiesta ---------- */
+.velo{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.18);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:none;align-items:flex-end;justify-content:center;padding:18px}
+:root[data-tema="scuro"] .velo{background:rgba(0,0,0,.45)}
+.velo.on{display:flex;animation:fade .25s}
+@keyframes fade{from{opacity:0}}
+.sheet{width:min(460px,100%);padding:26px 24px 22px;border-radius:36px;background:var(--glass-forte);text-align:center;animation:su .4s cubic-bezier(.2,.9,.25,1.1)}
+@keyframes su{from{transform:translateY(60px);opacity:0}}
+.sheet .av{margin:0 auto 12px;width:64px;height:64px}
+.sheet h3{font-size:20px;font-weight:700;letter-spacing:-.02em}
+.sheet p{color:var(--txt2);margin-top:4px}
+.sheet .files{margin:18px 0;text-align:left;max-height:180px;overflow:auto;border-radius:16px;background:var(--riempi);padding:4px 14px}
+.sheet .files div,.sheet .files label{display:flex;gap:10px;align-items:center;justify-content:flex-start;margin:0;padding:9px 0;font-size:14px;color:var(--txt);cursor:pointer}
+.sheet .files div+div,.sheet .files label+label,.sheet .files label+div{border-top:.5px solid var(--sep)}
+.sheet .files input[type=checkbox]{width:18px;height:18px;accent-color:var(--blu);flex:none}
+.sheet .files svg{width:18px;height:18px;color:var(--txt2);flex:none}
+.sheet .files span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheet .files em{font-style:normal;color:var(--txt2);font-size:12.5px}
+.sheet .azioni{display:flex;gap:12px}
+.sheet .azioni .btn{flex:1;height:50px;font-size:16px}
+.sheet label{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:16px;color:var(--txt2);font-size:13.5px;cursor:pointer}
+
+/* ---------- toast ---------- */
+.toasts{position:fixed;z-index:60;top:52px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{padding:12px 20px;border-radius:999px;background:var(--glass-forte);font-weight:600;font-size:14px;display:flex;gap:10px;align-items:center;animation:giu .35s cubic-bezier(.2,.9,.25,1.1);pointer-events:auto}
+.toast svg{width:18px;height:18px}
+@keyframes giu{from{transform:translateY(-16px);opacity:0}}
+
+/* rilascio file ovunque */
+.rilascio{position:fixed;inset:12px;z-index:50;border-radius:34px;border:3px dashed var(--blu);background:color-mix(in srgb,var(--blu) 10%,transparent);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;pointer-events:none}
+.rilascio.on{display:flex}
+.rilascio b{font-size:24px;font-weight:700}
+.rilascio small{color:var(--txt2);font-size:15px}
+
+/* ---------- preferiti, dispositivi non vicini, diagnostica ---------- */
+.disp.offline{opacity:.55}
+.av{position:relative}
+.stella{position:absolute;top:-4px;right:-6px;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:var(--txt3);background:var(--glass-forte);
+  box-shadow:0 0 0 .5px var(--edge),0 3px 8px rgba(0,0,0,.18);opacity:0;transition:.2s}
+.disp:hover .stella,.stella.on,.disp:focus-within .stella{opacity:1}
+.stella.on{color:#ff9f0a}
+.stella svg{width:15px;height:15px}
+.azioni-riga{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+pre.diag{margin-top:12px;max-height:300px}
+
+/* ---------- wizard di primo collegamento ---------- */
+.wizard{position:fixed;inset:0;z-index:30;display:none;align-items:center;justify-content:center;padding:18px;overflow:auto;
+  background:color-mix(in srgb,var(--bg) 93%,transparent);-webkit-backdrop-filter:blur(26px);backdrop-filter:blur(26px)}
+.wizard.on{display:flex;animation:fade .25s}
+.wiz-card{width:min(680px,100%);padding:26px 28px 22px;border-radius:32px;max-height:100%;overflow:auto;background:color-mix(in srgb,var(--bg) 55%,var(--glass-forte))}
+.wiz-card h2{font-size:26px;font-weight:700;letter-spacing:-.02em;text-transform:none;color:var(--txt);margin:4px 0 6px;display:block}
+.wiz-card p{color:var(--txt2);line-height:1.45}
+.wdots{display:flex;gap:6px;margin-bottom:18px}
+.wdot{flex:1;display:flex;flex-direction:column;gap:6px;align-items:flex-start;font-size:12px;font-weight:600;color:var(--txt3)}
+.wdot i{display:block;width:100%;height:5px;border-radius:99px;background:var(--riempi);font-size:0}
+.wdot.on{color:var(--blu)}.wdot.on i{background:var(--blu)}
+.wdot.fatto{color:var(--verde)}.wdot.fatto i{background:var(--verde)}
+.wfoot{display:flex;gap:10px;align-items:center;margin-top:22px}
+.wfoot .grow{flex:1}
+.wcheck{margin:16px 0;border-radius:18px;background:var(--riempi);padding:4px 16px}
+.wcheck div{display:flex;gap:12px;align-items:center;padding:10px 0;font-size:14.5px}
+.wcheck div+div{border-top:.5px solid var(--sep)}
+.wcheck svg{width:20px;height:20px;flex:none}
+.wcheck small{color:var(--txt2);display:block;font-size:12.5px}
+.wcheck .btn{margin-left:auto}
+.wbox{border-radius:18px;background:var(--riempi);padding:16px;margin:14px 0}
+.wcode{width:100%;text-align:center;height:56px;font-size:28px;letter-spacing:.35em;font-weight:600}
+.wmsg{min-height:20px;margin-top:10px;font-size:14px}
+.wmsg.err{color:var(--rosso)}.wmsg.ok{color:var(--verde)}
+.wiz-card .passi{margin:14px 0}
+.wizard input.input{width:100%;text-align:left}
+</style>
+
+</head>
+<body>
+<div class="sfondo"><i></i><i></i><i></i><i></i></div>
+
+<main id="main">
+  <div class="barra" id="barra"><span id="barraTitolo">Home</span></div>
+
+  <!-- ======================= HOME ======================= -->
+  <section class="pagina on" data-p="home" data-t="Home">
+    <div class="titolo"><h1 id="saluto">Ciao</h1><p id="data"></p></div>
+    <div id="avvisoLS"></div>
+    <div class="griglia">
+      <div class="vetro card c7" id="cardPixel"></div>
+      <div class="vetro card c5">
+        <h2>Duplica schermo</h2>
+        <div class="mirror" id="homeMirror"></div>
+      </div>
+      <div class="vetro card c7">
+        <h2>Invia <span class="dx" id="homeDest"></span></h2>
+        <div class="drop" id="homeDrop">
+          <div class="ico" data-i="su"></div>
+          <b>Trascina qui foto e file</b>
+          <small>oppure <span class="link">sfoglia il computer</span></small>
+        </div>
+        <div id="homeInvii"></div>
+      </div>
+      <div class="vetro card c5">
+        <h2>Appunti condivisi</h2>
+        <div id="homeMsg"></div>
+        <textarea id="homeTesto" placeholder="Scrivi o incolla qui un testo, un link, un codice…"></textarea>
+        <div style="display:flex;gap:10px;margin-top:12px">
+          <button class="btn piccolo" id="homeIncolla"><span data-i="appunti"></span>Incolla</button>
+          <button class="btn primario piccolo" id="homeInviaTesto" style="margin-left:auto"><span data-i="invia"></span>Invia</button>
+        </div>
+      </div>
+      <div class="vetro card c12">
+        <h2>Arrivati di recente <span class="dx"><span class="link" data-azione="apriCartella">Apri cartella</span></span></h2>
+        <div class="strip" id="homeRecenti"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= SCHERMO ======================= -->
+  <section class="pagina" data-p="schermo" data-t="Schermo">
+    <div class="titolo"><h1>Schermo</h1><p>Guarda il Pixel sul PC: perfetto per mostrare foto, video e app.</p></div>
+    <div class="griglia">
+      <div class="vetro card c12">
+        <div class="schermo-hero">
+          <div class="onde" id="onde"><div class="telefono" id="telSchermo"></div><svg class="w" viewBox="0 0 26 60" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M4 18c5 7 5 17 0 24"/><path d="M13 10c9 11 9 29 0 40"/><path d="M22 2c13 16 13 40 0 56"/></svg></div>
+          <div style="flex:1;min-width:0">
+            <div id="schermoStato"></div>
+          </div>
+        </div>
+      </div>
+      <div class="vetro card c6">
+        <h2>Sul Pixel</h2>
+        <div class="passi">
+          <div class="passo"><div class="n">1</div><div><b>Abilita Debug USB</b><small>Impostazioni › Sistema › Opzioni sviluppatore</small></div></div>
+          <div class="passo"><div class="n">2</div><div><b>Collega il cavo USB</b><small>Accetta «Consenti debug USB» sul Pixel</small></div></div>
+          <div class="passo"><div class="n">3</div><div><b id="passo3">Premi Avvia in questa pagina</b><small>Dopo qualche secondo si apre la finestra</small></div></div>
+        </div>
+      </div>
+      <div class="vetro lista c6" style="align-self:start">
+        <div class="riga"><div class="ic" style="background:var(--blu)" data-i="schermo"></div><div class="testo"><b>Schermo intero</b><small>Premi Alt+F oppure ferma la duplicazione</small></div>
+          <label class="sw"><input type="checkbox" data-conf="schermo_intero"><span></span></label></div>
+        <div class="riga"><div class="ic" style="background:var(--viola)" data-i="pc"></div><div class="testo"><b>Nome del PC</b><small>Come lo vedono gli altri dispositivi</small></div>
+          <input class="input" data-conf-testo="nome_pc" maxlength="40"></div>
+      </div>
+      <div class="c12"><details><summary>Dettagli tecnici ›</summary><pre class="log" id="schermoLog"></pre></details></div>
+    </div>
+  </section>
+
+  <!-- ======================= CONDIVIDI ======================= -->
+  <section class="pagina" data-p="condividi" data-t="Condividi">
+    <div class="titolo"><h1>Condividi</h1><p>File e testi tra i tuoi dispositivi e questo PC. Sul telefono tieni aperta l'app LocalSend.</p></div>
+    <div id="avvisoLS2"></div>
+    <div class="griglia">
+      <div class="vetro card c12">
+        <h2>Vicino a te <span class="dx"><span class="link" id="cerca">Cerca di nuovo</span></span></h2>
+        <div class="vicini" id="vicini"></div>
+        <details style="margin-top:10px"><summary>Non lo trovi? Inserisci l'indirizzo IP del telefono ›</summary>
+          <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
+            <input class="input" id="ipManuale" placeholder="es. 192.168.1.50" style="text-align:left">
+            <button class="btn piccolo" id="ipVai">Collega</button>
+            <small class="vuoto">Lo trovi nell'app LocalSend del telefono, scheda Ricevi.</small>
+          </div></details>
+      </div>
+      <div class="vetro card c7">
+        <h2>Da inviare</h2>
+        <div class="drop" id="condDrop">
+          <div class="ico" data-i="su"></div>
+          <b>Trascina qui i file</b>
+          <small>o <span class="link">sceglili</span> · puoi anche trascinarli direttamente su un dispositivo</small>
+        </div>
+        <div class="coda" id="coda"></div>
+        <div style="display:flex;margin-top:14px"><button class="btn primario" id="inviaCoda" style="margin-left:auto" disabled><span data-i="invia"></span><span id="inviaCodaT">Invia</span></button></div>
+      </div>
+      <div class="vetro card c5">
+        <h2>Trasferimenti</h2>
+        <div id="trasferimenti"></div>
+      </div>
+      <div class="vetro card c12">
+        <h2>Messaggi ricevuti</h2>
+        <div id="messaggi"></div>
+      </div>
+      <div class="c12"><div class="sezione" style="display:flex">Ricevuti sul PC <span style="margin-left:auto;text-transform:none;letter-spacing:0" class="link" data-azione="apriCartella">Apri cartella</span></div>
+        <div class="vetro lista" id="ricevuti"></div>
+        <p class="vuoto" style="margin:10px 8px">Suggerimento: trascina una riga sul desktop o in un'altra app per copiarla lì.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= PIXEL (ADB) ======================= -->
+  <section class="pagina" data-p="pixel" data-t="Pixel">
+    <div class="titolo"><h1>Pixel</h1><p>Collegato tramite ADB: batteria, spazio e le tue foto sul PC.</p></div>
+    <div id="cavo"></div>
+  </section>
+
+  <!-- ======================= IMPOSTAZIONI ======================= -->
+  <section class="pagina" data-p="impostazioni" data-t="Impostazioni">
+    <div class="titolo"><h1>Impostazioni</h1></div>
+
+    <div class="sezione">Aspetto</div>
+    <div class="vetro lista">
+      <div class="riga"><div class="ic" style="background:#5e5ce6" data-i="luna"></div><div class="testo"><b>Tema</b></div>
+        <div class="seg" id="segTema"><button data-v="auto">Automatico</button><button data-v="chiaro">Chiaro</button><button data-v="scuro">Scuro</button></div></div>
+      <div class="riga" style="flex-wrap:wrap"><div class="ic" style="background:linear-gradient(160deg,#64d2ff,#0a84ff)" data-i="goccia"></div><div class="testo"><b>Vetro</b><small>Più trasparente o più colorato e leggibile</small></div>
+        <div class="cursore" style="flex-basis:100%;padding:4px 0 6px 46px"><small>Trasparente</small><input type="range" min="0" max="100" id="vetro"><small>Colorato</small></div></div>
+    </div>
+
+    <div class="sezione">Ricezione</div>
+    <div class="vetro lista">
+      <div class="riga"><div class="ic" style="background:var(--viola)" data-i="pc"></div><div class="testo"><b>Nome del PC</b><small>Come appare sugli altri dispositivi in LocalSend</small></div>
+        <input class="input" data-conf-testo="nome_pc" maxlength="40"></div>
+      <div class="riga cliccabile" data-azione="scegliCartella" data-q="file"><div class="ic" style="background:var(--blu)" data-i="cartella"></div><div class="testo"><b>Cartella dei file ricevuti</b><small id="impCartella"></small></div><span class="link">Cambia</span></div>
+      <div class="riga cliccabile" data-azione="scegliCartella" data-q="foto"><div class="ic" style="background:var(--arancio)" data-i="foto"></div><div class="testo"><b>Cartella delle foto importate</b><small id="impFoto"></small></div><span class="link">Cambia</span></div>
+      <div class="riga" style="flex-wrap:wrap"><div class="ic" style="background:var(--verde)" data-i="scudo"></div><div class="testo"><b>PIN di ricezione</b><small id="pinStato"></small></div>
+        <div class="azioni-riga"><input class="input" id="pinNuovo" type="password" maxlength="32" placeholder="Nuovo PIN (4–32)" autocomplete="new-password" style="width:170px;text-align:left"><button class="btn piccolo" id="pinImposta">Imposta</button><button class="btn piccolo" id="pinTogli">Rimuovi</button></div></div>
+      <div class="riga"><div class="ic" style="background:var(--rosso)" data-i="campana"></div><div class="testo"><b>Notifiche</b><small>Avvisa quando arriva qualcosa</small></div>
+        <label class="sw"><input type="checkbox" data-conf="notifiche"><span></span></label></div>
+    </div>
+    <div class="sezione">Dispositivi</div>
+    <div class="vetro lista">
+      <div class="riga"><div class="ic" style="background:var(--blu)" data-i="telefono"></div><div class="testo"><b>Collega un telefono</b><small>Procedura guidata: trova il telefono e verifica che sia proprio il tuo</small></div><button class="btn piccolo primario" data-azione="wizApri">Avvia</button></div>
+    </div>
+    <div id="preferiti"></div>
+
+    <div class="sezione">Avvio</div>
+    <div class="vetro lista">
+      <div class="riga"><div class="ic" style="background:#8e8e93" data-i="luna"></div><div class="testo"><b>Resta pronta in background</b><small>Chiudendo la finestra continui a ricevere; per uscire davvero usa «Esci» qui sotto</small></div>
+        <label class="sw"><input type="checkbox" data-conf="background"><span></span></label></div>
+      <div class="riga"><div class="ic" style="background:#30b0c7" data-i="accendi"></div><div class="testo"><b>Avvia all'accensione del PC</b><small>Parte nascosta, pronta a ricevere</small></div>
+        <label class="sw"><input type="checkbox" data-conf="avvio_login"><span></span></label></div>
+    </div>
+
+    <div class="sezione" style="display:flex">Componenti <span style="margin-left:auto;text-transform:none;letter-spacing:0" class="link" id="installa"></span></div>
+    <div class="vetro lista" id="componenti"></div>
+
+    <div class="sezione">Identità e rete</div>
+    <div class="vetro lista" id="identita"></div>
+    <div class="vetro lista" id="rete" style="margin-top:12px"></div>
+
+    <div class="sezione">Manutenzione</div>
+    <div class="vetro lista">
+      <div class="riga"><div class="ic" style="background:#8e8e93" data-i="accendi"></div><div class="testo"><b>Esci da Pixel Hub</b><small>Chiude anche la ricezione in background</small></div><button class="btn piccolo" data-azione="esci">Esci</button></div>
+      <div class="riga"><div class="ic" style="background:var(--arancio)" data-i="goccia"></div><div class="testo"><b>Ripristina impostazioni</b><small>Copia di sicurezza automatica; file e identità restano</small></div><button class="btn piccolo rosso" id="btnRipristina">Ripristina…</button></div>
+      <div class="riga"><div class="ic" style="background:var(--rosso)" data-i="lucchetto"></div><div class="testo"><b>Rigenera identità</b><small>Solo se l'identità è danneggiata o vuoi cambiarla</small></div><button class="btn piccolo rosso" id="btnIdentita">Rigenera…</button></div>
+    </div>
+
+    <div class="sezione">Diagnostica</div>
+    <div class="vetro card"><p class="vuoto" style="margin-bottom:12px">Stato di rete, ricezione e possibili cause se un dispositivo non compare. Contiene indirizzi locali: oscurali prima di condividerla.</p>
+      <button class="btn" id="btnDiag">Esegui diagnostica</button><pre class="log diag" id="diagTesto" style="display:block">Premi «Esegui diagnostica».</pre></div>
+
+    <p class="vuoto" style="text-align:center;margin:30px 0 0" id="versione"></p>
+  </section>
+</main>
+
+<nav class="tabbar vetro" id="tabbar">
+  <button class="tab on" data-p="home"><span data-i="casa"></span><span>Home</span></button>
+  <button class="tab" data-p="schermo"><span data-i="schermo"></span><span>Schermo</span></button>
+  <button class="tab" data-p="condividi"><span data-i="frecce"></span><span>Condividi</span><i class="punto" id="puntoCond"></i></button>
+  <button class="tab" data-p="pixel"><span data-i="telefono"></span><span>Pixel</span></button>
+  <button class="tab" data-p="impostazioni"><span data-i="ingranaggio"></span><span>Impostazioni</span></button>
+</nav>
+
+<div class="velo" id="velo"><div class="sheet vetro" id="sheet"></div></div>
+<div class="toasts" id="toasts"></div>
+<div class="rilascio" id="rilascio"><div class="drop" style="border:0;pointer-events:none"><div class="ico" data-i="su"></div></div><b id="rilascioT">Rilascia per inviare</b><small id="rilascioS"></small></div>
+
+<div class="wizard" id="wizard"><div class="wiz-card vetro" id="wizCard"></div></div>
+<div class="velo" id="veloPin"><div class="sheet vetro" id="sheetPin"></div></div>
+<div class="velo" id="veloConf"><div class="sheet vetro" id="sheetConf"></div></div>
+
+<script src="app.js"></script>
+</body>
+</html>
