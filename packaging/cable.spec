@@ -1,3 +1,6 @@
+# Niente pacchetto debuginfo: includerebbe i sorgenti vendorizzati, e brp-mangle-shebangs scambia gli attributi `#![...]` dei crate per shebang
+%global debug_package %{nil}
+
 Name:           cable
 Version:        6.0.0
 Release:        1%{?dist}
