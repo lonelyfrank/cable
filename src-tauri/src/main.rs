@@ -106,6 +106,9 @@ fn notifica(app: &AppHandle, engine: &Arc<Engine>, kind: &str, d: Value) {
             "parziale" | "errore" | "scaduta" => { n.summary(&format!("Ricezione da {} non completata", s("alias"))).body(&s("errore")).action("cartella", "Apri cartella").action("default", "Apri Cable");  }
             _ => return,
         },
+        "aggiornamento" => {
+            n.summary("Aggiornamento di Cable disponibile").body(&format!("Nel repository c'è una versione più recente ({}). Apri Cable per il comando di aggiornamento.", s("remoto"))).action("default", "Apri");
+        }
         "messaggio" => { n.summary(&format!("Messaggio da {}", s("alias"))).body(&s("testo").chars().take(120).collect::<String>()).action("default", "Apri");  }
         "invio" => {
             let titolo = match d["stato"].as_str().unwrap_or("") { "completato" => "Invio completato", "parziale" => "Invio parziale", "rifiutato" => "Invio rifiutato", "scaduto" => "Invio scaduto", "interrotto" => "Invio interrotto", "errore" => "Invio non riuscito", _ => return };

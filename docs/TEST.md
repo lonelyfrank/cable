@@ -52,3 +52,19 @@ recupero dopo cambio rete o sospensione veri, memoria con finestra aperta, riape
 ## 4. Prove con client ufficiali — **NON eseguite**
 Compatibilità con LocalSend ufficiale su Android e iOS **non dimostrata**: certificato ECDSA accettato?, messaggio col codice del wizard mostrato?,
 comportamento a PIN ripetuti e con `sha256`, multicast su hotspot. Vedi la checklist.
+
+## 4. Ubuntu 26.04 (27 ottobre 2026 · rustc 1.99.1 · librerie di esecuzione GTK 3.24 / WebKitGTK 2.52 / libsoup 3.6 di serie)
+
+* **Motore** (`cargo test -p pixelhub-engine`): 51 unitari + 23 end-to-end + 15 sulla ricezione, tutti passati (nuovi: riconoscimento della
+  distribuzione da `os-release`, comandi di installazione per `apt`/`dnf`, lettura di `ufw.conf`, lettura dell'hash di `git ls-remote`).
+  In una esecuzione su sei un test end-to-end (`no_auto_accept_even_with_favorite_fingerprint`) è fallito con «server non avviato»: la
+  porta libera scelta dal banco di prova può essere presa da un altro test in parallelo; da solo e nelle esecuzioni successive passa.
+* **Schermo iPhone (AirPlay)**: UxPlay 1.73 avviato e fermato dal motore (`-- --ignored airplay`): porte fisse, server inizializzato,
+  righe di log in tempo reale grazie a `stdbuf`. Scelta Android/iPhone e riconoscimento di iPhone/iPad dal modello o dal nome: test unitari.
+  **Non provato**: una duplicazione vera da un iPhone (riconoscimento di «Begin streaming» e della chiusura).
+* **Guscio Tauri**: `cargo build --release -p cable` senza avvisi. Il banco di prova della finestra (`ui-test`) non è stato eseguito: con
+  Cable già aperto il plugin d'istanza unica passa la mano alla finestra esistente.
+* **Controllo aggiornamenti contro GitHub** (`-- --ignored aggiornamenti`, rete reale): esito «aggiornato». Il ramo «novità disponibile»
+  non è stato provato su un repository reale.
+* **Non provati**: la nuova sezione *Impostazioni › Aggiornamenti*, la notifica di aggiornamento, il comportamento con
+  `ufw` attivo (qui è disattivato). L'interfaccia (pagina Schermo per iPhone compresa) è controllata solo per sintassi (`node --check`).

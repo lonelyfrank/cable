@@ -82,7 +82,7 @@ pub fn validate(key: &str, v: &Value) -> Option<Value> {
         "cartella" | "cartella_foto" => v.as_str().filter(|s| s.starts_with('/')).map(|s| json!(s)),
         "vetro" => v.as_f64().map(|n| json!((n as i64).clamp(0, 100))),
         "tema" => v.as_str().filter(|s| ["auto", "chiaro", "scuro"].contains(s)).map(|s| json!(s)),
-        "notifiche" | "schermo_intero" | "background" | "avvio_login" | "wizard_fatto" => v.as_bool().map(|b| json!(b)),
+        "notifiche" | "schermo_intero" | "background" | "avvio_login" | "wizard_fatto" | "controlla_aggiornamenti" => v.as_bool().map(|b| json!(b)),
         "preferiti" => Some(clean_favorites(v)),
         "pin_ricezione" => if v.is_null() || valid_pin_record(v) { Some(v.clone()) } else { None },
         _ => None,
@@ -95,7 +95,7 @@ pub fn defaults(p: &Paths) -> Map<String, Value> {
         "cartella": p.downloads.join("Cable").to_string_lossy(),
         "cartella_foto": p.pictures.join("Cable").to_string_lossy(),
         "vetro": 45, "tema": "auto", "notifiche": true, "schermo_intero": false, "background": true,
-        "avvio_login": false, "preferiti": {}, "pin_ricezione": null, "migrato_da": null, "wizard_fatto": false,
+        "avvio_login": false, "controlla_aggiornamenti": true, "preferiti": {}, "pin_ricezione": null, "migrato_da": null, "wizard_fatto": false,
     }) else { unreachable!() };
     m
 }

@@ -146,8 +146,13 @@ function saluto() {
 }
 
 function avvisoLS() {
-  const sv = S.server;
+  const sv = S.server, ag = S.aggiornamento;
   let h = "";
+  if (ag && ag.attivo && ag.disponibile) {
+    h += `<div class="vetro avviso"><div class="ic" style="background:var(--blu)">${I.ok}</div><div class="t"><b>Aggiornamento di Cable disponibile</b>
+      <small>Nel repository c'è una versione più recente (${esc(ag.locale)} → ${esc(ag.remoto)}). Copia il comando, incollalo in un terminale e riapri Cable.</small></div>
+      <button class="btn piccolo primario" data-azione="copiaAggiorna">Copia comando</button></div>`;
+  }
   if (S.identita.stato !== "ok") {
     h += `<div class="vetro avviso"><div class="ic">${I.attenzione}</div><div class="t"><b>Identità non valida</b>
       <small>${esc(S.identita.errore)} Non la rigenero da sola: decidi tu in Impostazioni › Identità.</small></div>
@@ -156,7 +161,7 @@ function avvisoLS() {
     const porta = sv.errore === "porta";
     h += `<div class="vetro avviso"><div class="ic">${I.attenzione}</div><div class="t">
       <b>${porta ? "Un'altra app sta già usando la porta " + sv.porta : "Ricezione file non attiva"}</b>
-      <small>${porta ? "Di solito è LocalSend per PC: chiudilo, poi riprova. L'invio verso altri dispositivi non è influenzato." : esc(sv.errore || "")}</small></div>
+      <small>${porta ? "Di solito è LocalSend per PC o una versione precedente di questa app (Pixel Hub, iPhone Hub): chiudila, poi riprova. L'invio verso altri dispositivi non è influenzato." : esc(sv.errore || "")}</small></div>
       <button class="btn piccolo primario" data-azione="riprovaLS">Riprova</button></div>`;
   }
   for (const c of S.cambi_identita || []) {
@@ -204,15 +209,17 @@ function renderHome() {
   }
   set("#cardPixel", h);
 
-  // schermo
-  const sc = S.schermo;
+  // schermo: scrcpy (Android) o AirPlay con UxPlay (iPhone/iPad), scelto dal motore in base al telefono collegato o vicino
+  const sc = S.schermo, ios = sc.modo === "iphone";
   let m;
-  if (!sc.installato) m = `<div class="tasto-tondo" style="background:var(--riempi);color:var(--txt3)">${I.mirror}</div><b>scrcpy non installato</b><small>Funzione facoltativa: vedi Impostazioni › Componenti.</small>`;
+  if (!sc.installato) m = `<div class="tasto-tondo" style="background:var(--riempi);color:var(--txt3)">${I.mirror}</div><b>${ios ? "UxPlay" : "scrcpy"} non installato</b><small>Funzione facoltativa: vedi Impostazioni › Componenti.</small>`;
   else if (sc.connesso) m = `<button class="tasto-tondo attivo" data-azione="schermo">${I.stop}</button><b>Schermo collegato</b><small>Lo schermo del telefono è nella sua finestra. Tocca per fermare.</small>`;
-  else if (sc.attivo) m = `<button class="tasto-tondo attivo" data-azione="schermo">${I.stop}</button><b>Avvio scrcpy…</b><small>Controlla il telefono e i dettagli in Schermo.</small>`;
-  else m = `<button class="tasto-tondo" data-azione="schermo">${I.play}</button><b>Schermo del telefono</b><small>Collega il telefono con Debug USB e premi Avvia.</small>`;
+  else if (sc.attivo) m = ios ? `<button class="tasto-tondo attivo" data-azione="schermo">${I.stop}</button><b>Pronto per AirPlay</b><small>Sull'iPhone: Centro di Controllo › Duplica schermo › «${esc(sc.nome)}». Tocca per fermare.</small>`
+    : `<button class="tasto-tondo attivo" data-azione="schermo">${I.stop}</button><b>Avvio scrcpy…</b><small>Controlla il telefono e i dettagli in Schermo.</small>`;
+  else m = `<button class="tasto-tondo" data-azione="schermo">${I.play}</button><b>Schermo del telefono</b><small>${ios ? "Premi Avvia, poi sull'iPhone scegli Duplica schermo." : "Collega il telefono con Debug USB e premi Avvia."}</small>`;
   set("#homeMirror", m);
-  $("#cardMirror").style.display = sc.installato ? "" : "none";          // facoltativo, solo Android
+  set("#mirrorTitolo", ios ? "Schermo iPhone (facoltativo)" : "Schermo Android (facoltativo)");
+  $("#cardMirror").style.display = sc.installato ? "" : "none";          // facoltativo: solo se lo strumento è installato
 
   set("#homeDest", dest ? `<span class="chip blu"><i></i>a ${esc(nomeDisp(dest))}</span>` : `<span class="chip warn"><i class="pulsa"></i>${esc(nessunDest())}</span>`);
   set("#homeInvii", listaInvii(S.invii.slice(0, 2), true));
@@ -305,15 +312,26 @@ function listaRicezioni() {
   return attive + fatte;
 }
 
+const PASSI_SCHERMO = {
+  android: ["Sullo smartphone Android", [["Abilita Debug USB", "Impostazioni › Sistema › Opzioni sviluppatore"], ["Collega il cavo USB", "Accetta «Consenti debug USB» sullo smartphone"], ["Premi Avvia in questa pagina", "Dopo qualche secondo si apre la finestra"]]],
+  iphone: ["Sull'iPhone o iPad", [["Stessa rete del PC", "Wi-Fi o hotspot: AirPlay non passa dal cavo"], ["Premi Avvia in questa pagina", "Il PC diventa un ricevitore AirPlay"], ["Duplica schermo", "Centro di Controllo › Duplica schermo › il nome del PC"]]],
+};
 function renderSchermo() {
-  const sc = S.schermo;
-  set("#passo3", "Premi Avvia in questa pagina");
+  const sc = S.schermo, ios = sc.modo === "iphone", strumento = ios ? "UxPlay" : "scrcpy";
+  const [titolo, passi] = PASSI_SCHERMO[ios ? "iphone" : "android"];
+  set("#schermoTitolo", ios ? "Schermo iPhone" : "Schermo Android");
+  set("#schermoSotto", ios ? "Funzione facoltativa: guarda lo schermo dell'iPhone o dell'iPad sul PC (AirPlay, con UxPlay). Non serve per inviare o ricevere file."
+                           : "Funzione facoltativa, per smartphone Android: guarda e controlla lo schermo sul PC (scrcpy). Non serve per inviare o ricevere file.");
+  set("#passiTitolo", titolo);
+  set("#passiSchermo", passi.map(([b, s], i) => `<div class="passo"><div class="n">${i + 1}</div><div><b>${esc(i === 2 && ios ? `${b} › «${sc.nome}»` : b)}</b><small>${esc(s)}</small></div></div>`).join(""));
   $("#onde").classList.toggle("on", sc.attivo && !sc.connesso);
   $("#telSchermo").classList.toggle("spento", !sc.connesso);
   let h;
-  if (!sc.installato) h = `<h3>scrcpy non installato</h3><p class="vuoto">Funzione facoltativa, indipendente dai trasferimenti Wi-Fi. Per attivarla vedi Impostazioni › Componenti.</p>`;
+  if (!sc.installato) h = `<h3>${strumento} non installato</h3><p class="vuoto">Funzione facoltativa, indipendente dai trasferimenti Wi-Fi. Per attivarla vedi Impostazioni › Componenti.</p>`;
+  else if (sc.attivo && ios) h = `<h3>${sc.connesso ? "Schermo collegato" : "In attesa dell'iPhone"}</h3><p class="vuoto">${sc.connesso ? "Lo schermo è nella sua finestra. Per smettere: Ferma qui, oppure «Interrompi duplicazione» sull'iPhone." : `Sull'iPhone apri il Centro di Controllo, tocca Duplica schermo e scegli «${esc(sc.nome)}». Se non compare: stessa rete, e niente isolamento dei client sul router.`}</p><button class="btn rosso grande" data-azione="schermo">${I.stop}Ferma</button>`;
   else if (sc.attivo) h = `<h3>${sc.connesso ? "Schermo collegato" : "Avvio scrcpy…"}</h3><p class="vuoto">Schermo e controllo del telefono in una finestra separata. Se non compare, leggi i dettagli tecnici qui sotto.</p><button class="btn rosso grande" data-azione="schermo">${I.stop}Ferma</button>`;
-  else h = `<h3>Il telefono sul PC</h3><p class="vuoto">Collega un solo telefono, abilita Debug USB e autorizza Fedora. Poi premi Avvia.</p><button class="btn primario grande" data-azione="schermo">${I.play}Avvia</button>`;
+  else if (ios) h = `<h3>L'iPhone sul PC</h3><p class="vuoto">Premi Avvia: il PC compare come «${esc(sc.nome)}» in Duplica schermo. Solo visione, senza controllo dal PC.</p><button class="btn primario grande" data-azione="schermo">${I.play}Avvia</button>`;
+  else h = `<h3>Il telefono sul PC</h3><p class="vuoto">Collega un solo telefono, abilita Debug USB e autorizza questo computer. Poi premi Avvia.</p><button class="btn primario grande" data-azione="schermo">${I.play}Avvia</button>`;
   set("#schermoStato", h);
   const pre = $("#schermoLog"), txt = sc.log.join("\n") || "Nessun messaggio.";
   if (pre.textContent !== txt) { pre.textContent = txt; pre.scrollTop = pre.scrollHeight; }
@@ -396,6 +414,14 @@ function renderImpostazioni() {
     `</div><p class="vuoto" style="margin:8px 8px 0">La stella è solo una scorciatoia (il dispositivo resta in cima all'elenco): non autorizza mai la ricezione automatica e il nome non prova chi sia il dispositivo. «Confermato» significa che hai verificato l'impronta con il codice.</p>` : "");
   set("#componenti", S.componenti.map(k => `<div class="riga"><div class="ic" style="background:${k.ok ? "var(--verde)" : "var(--arancio)"}">${k.ok ? I.ok : I.attenzione}</div>
     <div class="testo"><b>${esc(k.nome)}</b><small>${esc(k.desc)}${k.ok ? "" : " · nel terminale: " + esc(k.comando)}</small></div><span class="val">${k.ok ? "Pronto" : "Non installato"}</span></div>`).join(""));
+  const ag = S.aggiornamento, ora = ag.controllato ? new Date(ag.controllato * 1000).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "";
+  set("#aggStato", !ag.verificabile ? "Non disponibile: questa copia è stata compilata senza git (si aggiorna con il gestore di pacchetti)"
+    : !ag.attivo ? "Spento: Cable non contatta GitHub"
+    : ag.disponibile ? `Novità disponibile (${esc(ag.locale)} → ${esc(ag.remoto)})`
+    : ag.errore ? "Ultimo controllo non riuscito: " + esc(ag.errore)
+    : ag.controllato ? `Aggiornato (${esc(ag.locale)}) · controllato alle ${ora}`
+    : "Si controlla all'avvio e ogni 6 ore, chiedendo a github.com solo l'ultimo commit");
+  $("#btnAgg").style.display = ag.verificabile && ag.attivo ? "" : "none";
   const r = S.rete;
   set("#rete", `<div class="riga"><div class="ic" style="background:var(--blu)">${I.wifi}</div><div class="testo"><b>Connessione</b></div><span class="val">${esc(r.nome || "—")}</span></div>
     <div class="riga"><div class="ic" style="background:#8e8e93">${I.rete}</div><div class="testo"><b>Indirizzo del PC</b></div><span class="val" style="user-select:text">${esc(r.ip.join(", ") || "—")}</span></div>
@@ -403,9 +429,10 @@ function renderImpostazioni() {
   const id = S.identita;
   set("#identita", `<div class="riga"><div class="ic" style="background:${id.stato === "ok" ? "var(--verde)" : "var(--rosso)"}">${I.scudo}</div><div class="testo"><b>Identità di questo PC</b>
     <small style="user-select:text">${id.stato === "ok" ? esc(id.impronta.match(/.{1,8}/g).slice(0, 4).join(" ")) + "…" : esc(id.errore)}</small></div><span class="val">${id.stato === "ok" ? "Valida" : "Da correggere"}</span></div>`);
-  set("#versione", `Cable ${esc(S.versione)} · protocollo LocalSend · ADB e scrcpy facoltativi (solo Android)`);
-  const andr = S.componenti.some(k => k.ok);                              // strumenti Android: visibili solo se installati
-  $("#tabSchermo").style.display = $("#tabPixel").style.display = andr ? "" : "none";
+  set("#versione", `Cable ${esc(S.versione)} · protocollo LocalSend · facoltativi: ADB e scrcpy (Android), UxPlay (iPhone)`);
+  const ok = id => S.componenti.some(k => k.id === id && k.ok);            // strumenti facoltativi: visibili solo se installati
+  $("#tabSchermo").style.display = ok("scrcpy") || ok("uxplay") ? "" : "none";
+  $("#tabPixel").style.display = ok("adb") || ok("scrcpy") ? "" : "none";
 }
 
 /* ------------------------------------------------------------ richieste in arrivo (accettazione anche parziale) */
@@ -475,8 +502,13 @@ function renderScelta() {
   velo.classList.add("on");
 }
 const AZ = {
-  async schermo() { const on = S.schermo.attivo; const r = await api("schermo", { azione: on ? "ferma" : "avvia" }); if (!on && !r.ok) toast("Non riesco ad avviare scrcpy", "warn"); },
+  async schermo() { const on = S.schermo.attivo; const r = await api("schermo", { azione: on ? "ferma" : "avvia" }); if (!on && !r.ok) toast(`Non riesco ad avviare ${S.schermo.modo === "iphone" ? "UxPlay" : "scrcpy"}`, "warn"); },
   vai(e) { vai(e.dataset.p); },
+  async copiaAggiorna() { await copiaTesto(S.aggiornamento.comando); toast("Comando copiato: incollalo in un terminale"); },
+  async controllaAgg() {
+    const r = await api("aggiornamento_controlla"), a = r.aggiornamento || {};
+    toast(a.errore ? "Controllo non riuscito: " + a.errore : a.disponibile ? "Aggiornamento disponibile" : "Cable è aggiornato", a.errore ? "warn" : "ok");
+  },
   async riprovaLS() { const r = await api("riprova_server"); toast(r.ok ? "Ricezione attiva" : "Ancora occupata: chiudi LocalSend per PC", r.ok ? "ok" : "warn"); },
   async accetta() {
     const box = [...document.querySelectorAll("#sheet input[data-fid]")];

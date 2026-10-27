@@ -361,7 +361,7 @@ pre.diag{margin-top:12px;max-height:300px}
     <div class="griglia">
       <div class="vetro card c7" id="cardPixel"></div>
       <div class="vetro card c5" id="cardMirror">
-        <h2>Schermo Android (facoltativo)</h2>
+        <h2 id="mirrorTitolo">Schermo del telefono (facoltativo)</h2>
         <div class="mirror" id="homeMirror"></div>
       </div>
       <div class="vetro card c7">
@@ -391,7 +391,7 @@ pre.diag{margin-top:12px;max-height:300px}
 
   <!-- ======================= SCHERMO ======================= -->
   <section class="pagina" data-p="schermo" data-t="Schermo">
-    <div class="titolo"><h1>Schermo Android</h1><p>Funzione facoltativa, solo per smartphone Android: guarda lo schermo sul PC (scrcpy). Non serve per inviare o ricevere file.</p></div>
+    <div class="titolo"><h1 id="schermoTitolo">Schermo del telefono</h1><p id="schermoSotto"></p></div>
     <div class="griglia">
       <div class="vetro card c12">
         <div class="schermo-hero">
@@ -402,12 +402,8 @@ pre.diag{margin-top:12px;max-height:300px}
         </div>
       </div>
       <div class="vetro card c6">
-        <h2>Sullo smartphone Android</h2>
-        <div class="passi">
-          <div class="passo"><div class="n">1</div><div><b>Abilita Debug USB</b><small>Impostazioni › Sistema › Opzioni sviluppatore</small></div></div>
-          <div class="passo"><div class="n">2</div><div><b>Collega il cavo USB</b><small>Accetta «Consenti debug USB» sullo smartphone</small></div></div>
-          <div class="passo"><div class="n">3</div><div><b id="passo3">Premi Avvia in questa pagina</b><small>Dopo qualche secondo si apre la finestra</small></div></div>
-        </div>
+        <h2 id="passiTitolo"></h2>
+        <div class="passi" id="passiSchermo"></div>
       </div>
       <div class="vetro lista c6" style="align-self:start">
         <div class="riga"><div class="ic" style="background:var(--blu)" data-i="schermo"></div><div class="testo"><b>Schermo intero</b><small>Premi Alt+F oppure ferma la duplicazione</small></div>
@@ -500,6 +496,13 @@ pre.diag{margin-top:12px;max-height:300px}
         <label class="sw"><input type="checkbox" data-conf="background"><span></span></label></div>
       <div class="riga"><div class="ic" style="background:#30b0c7" data-i="accendi"></div><div class="testo"><b>Avvia all'accensione del PC</b><small>Parte nascosta, pronta a ricevere</small></div>
         <label class="sw"><input type="checkbox" data-conf="avvio_login"><span></span></label></div>
+    </div>
+
+    <div class="sezione">Aggiornamenti</div>
+    <div class="vetro lista">
+      <div class="riga"><div class="ic" style="background:var(--blu)" data-i="rete"></div><div class="testo"><b>Cerca aggiornamenti</b><small id="aggStato"></small></div>
+        <button class="btn piccolo" id="btnAgg" data-azione="controllaAgg">Controlla ora</button>
+        <label class="sw"><input type="checkbox" data-conf="controlla_aggiornamenti"><span></span></label></div>
     </div>
 
     <div class="sezione" style="display:flex">Componenti <span style="margin-left:auto;text-transform:none;letter-spacing:0" class="link" id="installa"></span></div>

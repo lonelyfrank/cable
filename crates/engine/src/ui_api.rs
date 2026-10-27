@@ -65,6 +65,7 @@ pub async fn chiama(e: &Arc<Engine>, host: &dyn Host, metodo: &str, a: Value) ->
             let r = e.imposta_pin(a["pin"].as_str());
             json!({"ok": r, "errore": if r { "" } else { "Il PIN deve avere da 4 a 32 caratteri" }})
         }
+        "aggiornamento_controlla" => { e.controlla_aggiornamenti().await; json!({"ok": true, "aggiornamento": e.aggiornamento_snapshot()}) }
         "ripristina" => json!({"ok": true, "backup": e.ripristina_impostazioni()}),
         "rigenera_identita" => ok(e.rigenera_identita().await),
         "riprova_server" => ok(e.riprova_server().await),
@@ -84,8 +85,8 @@ pub async fn chiama(e: &Arc<Engine>, host: &dyn Host, metodo: &str, a: Value) ->
                 None => ok(false),
             }
         }
-        // ---- Android opzionale
-        "schermo" => if s(&a, "azione") == "avvia" { ok(e.android.avvia_schermo().await) } else { e.android.ferma_schermo(); ok(true) },
+        // ---- schermo del telefono (scrcpy o AirPlay, secondo il dispositivo) e Android opzionale
+        "schermo" => if s(&a, "azione") == "avvia" { ok(e.avvia_schermo().await) } else { e.ferma_schermo(); ok(true) },
         "android_importa" => ok(e.android.importa()),
         "android_apri" => ok(e.android.apri_file_manager()),
         "android_riprova" => ok(e.android.riprova().await),

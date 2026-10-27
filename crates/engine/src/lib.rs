@@ -1,4 +1,6 @@
 //! Motore LocalSend v2 di Cable. Nessuna dipendenza da GUI: la UI lo pilota e ascolta il bus.
+pub mod aggiornamenti;
+pub mod airplay;
 pub mod android;
 pub mod bus;
 pub mod client;

@@ -409,7 +409,7 @@ async fn snapshot_is_complete_for_the_ui_and_has_no_secrets() {
     a.imposta_pin(Some("987654"));
     let s: Value = a.snapshot();
     for k in ["versione", "utente", "conf", "pin_impostato", "dispositivi", "ricezioni", "messaggi", "invii", "server", "identita", "rete",
-              "recenti", "componenti", "avvisi", "migrazione", "adb", "schermo", "wizard"] {
+              "recenti", "componenti", "avvisi", "migrazione", "adb", "schermo", "wizard", "aggiornamento"] {
         assert!(s.get(k).is_some(), "manca {k}");
     }
     let txt = s.to_string();

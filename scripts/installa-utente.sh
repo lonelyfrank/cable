@@ -1,11 +1,27 @@
 #!/usr/bin/env bash
-# Installazione per l'utente corrente (senza RPM, senza sudo, senza dnf): tutto sotto ~/.local.
-#   scripts/installa-utente.sh           compila (se serve) e installa binario, icone, lanciatore e voce per Nautilus
+# Installazione per l'utente corrente (senza RPM/DEB, senza sudo): tutto sotto ~/.local.
+#   scripts/installa-utente.sh           compila e installa binario, icone, lanciatore e voce per Nautilus
+#   scripts/installa-utente.sh aggiorna  scarica le novità del repository (git pull) e reinstalla
 #   scripts/installa-utente.sh rimuovi   rimuove Cable e ripristina lanciatore/avvio automatico di Pixel Hub (se salvati)
-# Per compilare servono (da installare tu, una volta):
-#   sudo dnf install cargo rust gcc gtk3-devel webkit2gtk4.1-devel libsoup3-devel javascriptcoregtk4.1-devel librsvg2-devel
-# Per eseguire: gtk3, webkit2gtk4.1, libsoup3 (già presenti su Fedora Workstation). Facoltativi: android-tools, scrcpy (solo Android).
+# Per compilare servono (da installare tu, una volta; lo script ricorda quelli giusti se la compilazione fallisce):
+#   Ubuntu/Debian: sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev \
+#                    libjavascriptcoregtk-4.1-dev librsvg2-dev libdbus-1-dev libxdo-dev libssl-dev   + Rust (https://rustup.rs)
+#   Fedora:        sudo dnf install cargo rust gcc dbus-devel gtk3-devel webkit2gtk4.1-devel libsoup3-devel javascriptcoregtk4.1-devel librsvg2-devel
+# Per eseguire: GTK 3, WebKitGTK 4.1, libsoup 3 (già presenti su Fedora Workstation e Ubuntu desktop). Facoltativi: adb, scrcpy (solo Android).
 set -euo pipefail
+
+dipendenze() {
+  local id=""; [[ -r /etc/os-release ]] && id="$(. /etc/os-release; echo "${ID:-} ${ID_LIKE:-}")"
+  echo "Per compilare servono Rust e le librerie di sviluppo. Installale una volta, poi riprova:"
+  case " $id " in
+    *" debian "*|*" ubuntu "*)
+      echo "  sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev librsvg2-dev libdbus-1-dev libxdo-dev libssl-dev"
+      echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh        # Rust aggiornato (poi riapri il terminale)" ;;
+    *" fedora "*|*" rhel "*)
+      echo "  sudo dnf install cargo rust gcc dbus-devel gtk3-devel webkit2gtk4.1-devel libsoup3-devel javascriptcoregtk4.1-devel librsvg2-devel" ;;
+    *) echo "  GTK 3, WebKitGTK 4.1, libsoup 3, librsvg, libdbus (pacchetti -dev/-devel), pkg-config, un compilatore C e Rust (https://rustup.rs)" ;;
+  esac
+}
 ID=it.frank.Cable
 OLD_ID=it.frank.PixelHub
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,16 +34,29 @@ NAUT="$HOME/.local/share/nautilus/scripts/Invia con Cable"
 AUTO="$HOME/.config/autostart/$ID.desktop"
 OLD_AUTO="$HOME/.config/autostart/$OLD_ID.desktop"
 
-case "${1:-installa}" in
+MODO="${1:-installa}"
+if [[ "$MODO" == aggiorna ]]; then
+  (( EUID == 0 )) && { echo "Esegui come utente normale, senza sudo."; exit 1; }
+  [[ -d "$SRC/.git" ]] || { echo "Questa copia non è un clone git: non posso aggiornarla da qui."; exit 1; }
+  echo "Scarico le novità…"
+  git -C "$SRC" pull --ff-only || { echo "git pull non è riuscito (modifiche locali o rami divergenti): risolvi in $SRC e riprova."; exit 1; }
+  MODO=installa
+fi
+case "$MODO" in
   installa)
     if (( EUID == 0 )); then echo "Esegui come utente normale, senza sudo."; exit 1; fi
     if pgrep -x pixel-hub >/dev/null; then echo "Pixel Hub è ancora aperto: chiudilo prima (Impostazioni › Esci)."; exit 1; fi
     if pgrep -f '^python3 .*(pixel_hub\.py|-m pixelhub)' >/dev/null; then
       echo "Una versione Python di Pixel Hub è in esecuzione: chiudila prima."; exit 1
     fi
-    if [[ ! -x "$SRC/target/release/cable" ]]; then
-      command -v cargo >/dev/null || { echo "cargo non trovato: vedi le dipendenze in cima a questo script."; exit 1; }
-      (cd "$SRC" && cargo build --release -p cable)
+    if pgrep -f 'iphone_hub\.py' >/dev/null; then
+      echo "iPhone Hub è aperto e usa la stessa porta di Cable: chiudilo prima (pkill -f iphone_hub.py)."; exit 1
+    fi
+    # ricompila sempre: se non cambia nulla, cargo non rifà niente; così dopo un git pull il binario è quello nuovo
+    if command -v cargo >/dev/null; then
+      (cd "$SRC" && cargo build --release -p cable) || { echo; dipendenze; exit 1; }
+    elif [[ ! -x "$SRC/target/release/cable" ]]; then
+      echo "cargo non trovato."; dipendenze; exit 1
     fi
     mkdir -p "$APPS" "$BAK" "$(dirname "$BIN")"
     # il lanciatore di Pixel Hub si salva (non si cancella) e poi si toglie, per non avere due icone
@@ -54,6 +83,7 @@ SH
     update-desktop-database "$APPS" 2>/dev/null || true
     gtk-update-icon-cache -q "$ICONS" 2>/dev/null || true
     echo "Installato in $BIN. Cerca «Cable» nel menu delle applicazioni."
+    pgrep -x cable >/dev/null && echo "Cable è già aperto: chiudilo (Impostazioni › Esci) e riaprilo per usare la versione appena installata."
     echo "In Nautilus: tasto destro su file › Scripts › Invia con Cable."
     echo "Le impostazioni e l'identità di Pixel Hub (~/.config/pixel-hub, ~/.local/share/pixel-hub) non vengono modificate:"
     echo "al primo avvio Cable ne importa una copia." ;;
@@ -68,5 +98,5 @@ SH
     update-desktop-database "$APPS" 2>/dev/null || true
     gtk-update-icon-cache -q "$ICONS" 2>/dev/null || true
     echo "Rimosso. Impostazioni (~/.config/cable), identità (~/.local/share/cable), copie di sicurezza e file ricevuti sono rimasti." ;;
-  *) sed -n '2,4p' "$0"; exit 1 ;;
+  *) sed -n '2,5p' "$0"; exit 1 ;;
 esac

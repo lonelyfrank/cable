@@ -1,5 +1,6 @@
 //! Facade del motore: unisce impostazioni, identità, rete, ricezione, invio e wizard.
 //! Non dipende da GUI. `snapshot()` fa piccole letture bloccanti: dalla UI chiamarlo in un thread di lavoro.
+use crate::airplay::AirPlay;
 use crate::android::Android;
 use crate::bus::{Bus, Notifier};
 use crate::desktop;
@@ -20,7 +21,7 @@ use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-const CONF_KEYS: [&str; 9] = ["nome_pc", "cartella", "cartella_foto", "vetro", "tema", "notifiche", "schermo_intero", "background", "avvio_login"];
+const CONF_KEYS: [&str; 10] = ["nome_pc", "cartella", "cartella_foto", "vetro", "tema", "notifiche", "schermo_intero", "background", "avvio_login", "controlla_aggiornamenti"];
 
 struct Challenge { fp: String, alias: String, ip: String, port: u16, code: String, created: Instant, tries: u8 }
 
@@ -38,9 +39,13 @@ pub struct Engine {
     pub sender: Arc<Sender>,
     pub discovery: Arc<Discovery>,
     pub android: Arc<Android>,
+    pub airplay: Arc<AirPlay>,
     server: tokio::sync::Mutex<Option<ServerHandle>>,
     server_error: Mutex<String>,
-    cancel: CancellationToken,
+    pub(crate) cancel: CancellationToken,
+    pub(crate) agg: Mutex<crate::aggiornamenti::Stato>,
+    /// senza rete verso l'esterno (prove, sandbox): niente controllo degli aggiornamenti
+    pub(crate) isolato: bool,
     cache: Mutex<HashMap<&'static str, (Instant, Value)>>,
     wizard: Mutex<Wizard>,
 }
@@ -55,8 +60,9 @@ impl Engine {
         let receiver = Receiver::new(sh.settings.clone(), sh.bus.clone(), limits, sh.notifier.clone());
         Arc::new(Engine {
             receiver, sender: Sender::new(sh.clone()), discovery: Discovery::new(sh.clone(), multicast),
-            android: Android::new(sh.settings.clone(), sh.bus.clone()),
+            android: Android::new(sh.settings.clone(), sh.bus.clone()), airplay: AirPlay::new(sh.settings.clone(), sh.bus.clone()),
             server: tokio::sync::Mutex::new(None), server_error: Mutex::new(String::new()), cancel: CancellationToken::new(),
+            agg: Mutex::new(Default::default()), isolato: !multicast,
             cache: Mutex::new(HashMap::new()), wizard: Mutex::new(Wizard::default()), sh,
         })
     }
@@ -74,6 +80,7 @@ impl Engine {
         self.sh.registry.seed_remembered();
         self.discovery.start();
         self.android.start();
+        self.avvia_controllo_aggiornamenti();
         // dopo ogni cambio di rete/ripresa: svuota le cache di rete, riavvia il server se era caduto, riverifica i dispositivi
         let me = self.clone();
         tokio::spawn(async move {
@@ -123,6 +130,7 @@ impl Engine {
         self.cancel.cancel();
         self.discovery.stop();
         self.android.stop();
+        self.airplay.ferma();
         if let Some(h) = self.server.lock().await.take() { h.stop().await; }
     }
 
@@ -182,12 +190,15 @@ impl Engine {
         true
     }
 
-    pub fn aggiorna_impostazioni(&self, patch: &Map<String, Value>) -> Vec<String> {
+    pub fn aggiorna_impostazioni(self: &Arc<Self>, patch: &Map<String, Value>) -> Vec<String> {
         let patch: Map<String, Value> = patch.iter().filter(|(k, _)| CONF_KEYS.contains(&k.as_str()) || *k == "wizard_fatto").map(|(k, v)| (k.clone(), v.clone())).collect();
         let done = self.sh.settings.aggiorna(&patch);
         for k in ["cartella", "cartella_foto"] { if let Some(v) = done.get(k).and_then(Value::as_str) { let _ = std::fs::create_dir_all(v); } }
         if let Some(v) = done.get("avvio_login").and_then(Value::as_bool) { desktop::imposta_avvio(&self.sh.paths, v); }
         if let Some(v) = done.get("notifiche").and_then(Value::as_bool) { self.sh.notifier.enable(v); }
+        if done.get("controlla_aggiornamenti").and_then(Value::as_bool) == Some(true) && !self.isolato {
+            let me = self.clone(); tokio::spawn(async move { me.controlla_aggiornamenti().await });
+        }
         if done.contains_key("nome_pc") { let d = self.discovery.clone(); tokio::spawn(async move { d.announce(true).await }); }
         self.sh.bus.emit("impostazioni");
         done.keys().cloned().collect()
@@ -346,21 +357,52 @@ impl Engine {
             "recenti": self.cached("recenti", Duration::from_secs(2), || self.recenti()),
             "componenti": self.cached("componenti", Duration::from_secs(30), componenti),
             "avvisi": *self.sh.settings.avvisi.lock().unwrap(), "migrazione": s["migrato_da"],
-            "adb": adb, "schermo": schermo, "wizard": self.wizard_snapshot(),
+            "adb": adb, "schermo": self.schermo_snapshot(schermo), "wizard": self.wizard_snapshot(), "aggiornamento": self.aggiornamento_snapshot(),
         })
     }
+
+    // ------------------------------------------------------------------ schermo del telefono
+    /// Quale duplicazione offrire: quella già attiva; altrimenti Android se c'è un telefono collegato via ADB;
+    /// altrimenti in base ai dispositivi vicini (iPhone/iPad → AirPlay); infine quella installata.
+    pub fn modo_schermo(&self) -> &'static str {
+        if self.airplay.attivo() { return "iphone"; }
+        let (adb, scrcpy) = self.android.snapshot();
+        if scrcpy["attivo"] == json!(true) || adb["stato"] == "collegato" { return "android"; }
+        let vicini = self.sh.registry.snapshot();
+        let vicini: Vec<&Value> = vicini.as_array().map(|v| v.iter().filter(|d| d["vicino"] == json!(true) && d["tipo"] != "desktop").collect()).unwrap_or_default();
+        let (ios, altri) = (vicini.iter().filter(|d| apple(d)).count(), vicini.iter().filter(|d| !apple(d)).count());
+        let (ux, sc) = (AirPlay::installato(), scrcpy["installato"] == json!(true));
+        if ios > 0 && (ux || altri == 0) { return "iphone"; }
+        if altri > 0 && sc { return "android"; }
+        if ux && !sc { "iphone" } else { "android" }
+    }
+
+    fn schermo_snapshot(&self, scrcpy: Value) -> Value {
+        let modo = self.modo_schermo();
+        let mut v = if modo == "iphone" { self.airplay.snapshot() } else { scrcpy.clone() };
+        v["modo"] = json!(modo);
+        v["nome"] = json!(self.sh.settings.str("nome_pc"));
+        v["disponibili"] = json!({"android": scrcpy["installato"], "iphone": AirPlay::installato()});
+        v
+    }
+
+    pub async fn avvia_schermo(self: &Arc<Self>) -> bool {
+        if self.modo_schermo() == "iphone" { self.airplay.avvia() } else { self.android.avvia_schermo().await }
+    }
+
+    pub fn ferma_schermo(&self) { self.airplay.ferma(); self.android.ferma_schermo(); }
 
     // ------------------------------------------------------------------ diagnostica
     /// Testo per la sezione Diagnostica, con ipotesi distinte e non assolute.
     pub fn diagnostica(&self) -> String {
-        let zones = Command::new("firewall-cmd").arg("--get-active-zones").output().ok().filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).replace('\n', " | "));
+        let (firewall, comando_firewall) = desktop::firewall(self.port());
         let ips = local_ipv4();
         let srv_on = self.server.try_lock().map(|g| g.is_some()).unwrap_or(true);
         let err = self.server_error.lock().unwrap().clone();
         let id = self.sh.identity.read().unwrap();
         let mut l = vec![format!("Cable {VERSION} (Rust)")];
-        if let Ok(t) = std::fs::read_to_string("/etc/fedora-release") { l.push(t.trim().to_string()); }
+        let sistema = desktop::nome_sistema();
+        if !sistema.is_empty() { l.push(sistema); }
         l.push(format!("Server HTTPS: {} (porta {})", if srv_on { "attivo".to_string() } else { format!("SPENTO: {}", if err.is_empty() { "?" } else { &err }) }, self.port()));
         l.push(format!("Identità: {} {}", id.stato, if id.fingerprint.is_empty() { String::new() } else { format!("{}…", &id.fingerprint[..16]) }));
         l.push(format!("Indirizzi: {}", if ips.is_empty() { "nessuno".into() } else { ips.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(", ") }));
@@ -379,24 +421,39 @@ impl Engine {
         };
         l.push(format!("Dispositivi: {vicini} vicini, {ricordati} ricordati"));
         l.push(format!("Dispositivi visti: {}", self.sh.registry.len()));
-        l.push(format!("Firewall: {}", zones.unwrap_or_else(|| "firewalld non interrogabile".into())));
+        l.push(format!("Firewall: {firewall}"));
+        let agg = self.aggiornamento_snapshot();
+        l.push(format!("Aggiornamenti: {}", if agg["verificabile"] != json!(true) { "non verificabili (compilato senza git)".to_string() }
+            else if agg["attivo"] != json!(true) { "controllo spento nelle impostazioni".to_string() }
+            else if agg["disponibile"] == json!(true) { format!("disponibile ({} → {})", agg["locale"].as_str().unwrap_or(""), agg["remoto"].as_str().unwrap_or("")) }
+            else if !agg["errore"].as_str().unwrap_or("").is_empty() { format!("ultimo controllo non riuscito: {}", agg["errore"].as_str().unwrap_or("")) }
+            else { format!("aggiornato ({})", agg["locale"].as_str().unwrap_or("")) }));
         l.push(String::new());
         let mut hints = vec![];
         if ips.is_empty() { hints.push("Nessuna rete attiva: connettiti al Wi-Fi o all'hotspot del telefono.".to_string()); }
-        if err == "porta" { hints.push(format!("La porta {} è occupata, di solito da LocalSend per PC o da Pixel Hub 5.0 ancora aperto: chiudilo e premi Riprova.", self.port())); }
+        if err == "porta" { hints.push(format!("La porta {} è occupata, di solito da LocalSend per PC o da una versione precedente (Pixel Hub, iPhone Hub) ancora aperta: chiudila e premi Riprova.", self.port())); }
         if !mc.is_empty() { hints.push(format!("La scoperta automatica non parte ({mc}): puoi comunque inserire l'IP a mano.")); }
         if srv_on && self.sh.registry.is_empty() {
             hints.push(format!("Nessun dispositivo visto. Cause possibili: app compatibile (ad es. LocalSend) chiusa sullo smartphone, reti diverse, isolamento client del router, VPN, oppure firewall del PC (porta {} TCP/UDP): verifica una per volta, il firewall è solo una delle ipotesi.", self.port()));
+            if let Some(c) = comando_firewall { hints.push(format!("Se è ufw a bloccare, apri la porta (solo sulla rete che consideri fidata): {c}")); }
         }
         if hints.is_empty() { l.push("• Nessun problema evidente.".into()); } else { for h in hints { l.push(format!("• {h}")); } }
         l.join("\n")
     }
 }
 
+/// iPhone/iPad secondo il modello o il nome dichiarati (solo per scegliere la duplicazione: non è un dato d'identità).
+fn apple(d: &Value) -> bool {
+    let t = format!("{} {}", d["modello"].as_str().unwrap_or(""), d["alias"].as_str().unwrap_or("")).to_lowercase();
+    ["iphone", "ipad", "ipod", "apple", "ios"].iter().any(|k| t.split(|c: char| !c.is_alphanumeric()).any(|w| w == *k))
+}
+
 fn componenti() -> Value {
+    let f = desktop::famiglia();
     json!([
-        {"id": "adb", "nome": "ADB", "ok": desktop::has_command("adb"), "desc": "Facoltativo, solo Android: batteria, spazio e importazione foto via USB. Non serve per inviare o ricevere", "comando": "sudo dnf install android-tools"},
-        {"id": "scrcpy", "nome": "scrcpy", "ok": desktop::has_command("scrcpy"), "desc": "Facoltativo, solo Android: schermo e controllo del telefono. Non serve per inviare o ricevere", "comando": "sudo dnf copr enable zeno/scrcpy && sudo dnf install scrcpy"},
+        {"id": "adb", "nome": "ADB", "ok": desktop::has_command("adb"), "desc": "Facoltativo, solo Android: batteria, spazio e importazione foto via USB. Non serve per inviare o ricevere", "comando": desktop::comando_installazione(f, "adb")},
+        {"id": "scrcpy", "nome": "scrcpy", "ok": desktop::has_command("scrcpy"), "desc": "Facoltativo, solo Android: schermo e controllo del telefono. Non serve per inviare o ricevere", "comando": desktop::comando_installazione(f, "scrcpy")},
+        {"id": "uxplay", "nome": "UxPlay", "ok": AirPlay::installato(), "desc": "Facoltativo, solo iPhone/iPad: schermo del telefono sul PC via AirPlay (Duplica schermo). Non serve per inviare o ricevere", "comando": desktop::comando_installazione(f, "uxplay")},
     ])
 }
 
@@ -418,3 +475,28 @@ fn nome_utente() -> String {
 }
 
 pub fn recenti_path(e: &Engine) -> PathBuf { PathBuf::from(e.sh.settings.str("cartella")) }
+
+#[cfg(test)]
+mod tests_schermo {
+    use super::*;
+
+    #[test]
+    fn riconosce_iphone_e_ipad_ma_non_parole_simili() {
+        assert!(apple(&json!({"modello": "iPhone", "alias": "Fiore"})));
+        assert!(apple(&json!({"modello": "", "alias": "iPad di Sara"})));
+        assert!(apple(&json!({"modello": "iOS", "alias": "x"})));
+        assert!(!apple(&json!({"modello": "samsung", "alias": "Galaxy"})));
+        assert!(!apple(&json!({"modello": "Pixel 8", "alias": "Biosfera"})));      // «ios» dentro una parola non conta
+    }
+
+    #[tokio::test]
+    async fn nessun_telefono_vicino_sceglie_quella_installata() {
+        let t = tempfile::tempdir().unwrap();
+        let e = Engine::new(Paths::under(t.path()), 0, false);
+        let atteso = if AirPlay::installato() && !desktop::has_command("scrcpy") { "iphone" } else { "android" };
+        assert_eq!(e.modo_schermo(), atteso);
+        let s = e.snapshot();
+        assert_eq!(s["schermo"]["modo"], atteso);
+        assert!(s["schermo"]["disponibili"].is_object());
+    }
+}
