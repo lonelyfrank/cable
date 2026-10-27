@@ -282,7 +282,7 @@ impl Engine {
             json!({"attivo": rest > 0 && c.tries < 5, "secondi": rest, "tentativi": 5 - c.tries.min(5), "alias": c.alias, "fp": c.fp})
         }).unwrap_or(json!({"attivo": false, "secondi": 0, "tentativi": 5}));
         let invio = w.job.as_ref().and_then(|j| self.sender.stato_di(j)).map(|(s, e)| json!({"stato": s, "errore": e})).unwrap_or(Value::Null);
-        let prova = w.prova.as_ref().map_or(false, |(ip, t)| self.receiver.ultimo_arrivo_da(ip, *t));
+        let prova = w.prova.as_ref().is_some_and(|(ip, t)| self.receiver.ultimo_arrivo_da(ip, *t));
         json!({"sfida": ch, "invio": invio, "confermato_fp": w.confermato_fp, "prova_avviata": w.prova.is_some(), "prova_ricevuta": prova})
     }
 
@@ -309,7 +309,7 @@ impl Engine {
 
     fn cambi_identita(&self) -> Value {
         Value::Array(self.sh.registry.identity_changes().into_iter().map(|c| {
-            let vecchio_confermato = self.sh.settings.preferiti().get(&c.old_fp).map_or(false, |r| r["confermato"] == json!(true));
+            let vecchio_confermato = self.sh.settings.preferiti().get(&c.old_fp).is_some_and(|r| r["confermato"] == json!(true));
             json!({"antico": c.old_fp, "nuovo": c.new_fp, "nome": c.alias, "ip": c.ip, "quando": c.when, "vecchio_confermato": vecchio_confermato})
         }).collect())
     }
@@ -321,7 +321,7 @@ impl Engine {
         for r in v.iter_mut().filter(|r| r["stato"] == "attesa") {
             if let Some(d) = self.sh.registry.find_by_ip(r["ip"].as_str().unwrap_or("")) {
                 let rec = self.sh.settings.preferiti().get(&d.fp).cloned();
-                r["noto"] = json!({"nome": d.alias, "ricordato": rec.is_some(), "confermato": rec.map_or(false, |x| x["confermato"] == json!(true))});
+                r["noto"] = json!({"nome": d.alias, "ricordato": rec.is_some(), "confermato": rec.is_some_and(|x| x["confermato"] == json!(true))});
             }
         }
         Value::Array(v)

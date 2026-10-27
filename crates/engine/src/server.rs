@@ -98,7 +98,7 @@ async fn json_body(req: Request<Incoming>, limit: usize, deadline: Duration) -> 
 
 async fn handle(shared: Arc<Shared>, rx: Arc<Receiver>, ip: IpAddr, req: Request<Incoming>) -> Result<Resp, Abort> {
     let path = req.uri().path().to_string();
-    let q: HashMap<String, String> = req.uri().query().map(|q| url_pairs(q)).unwrap_or_default();
+    let q: HashMap<String, String> = req.uri().query().map(url_pairs).unwrap_or_default();
     match (req.method().clone(), path.as_str()) {
         (Method::GET, p) if p == format!("{API}/info") => Ok(reply(200, Some(shared.info(false)))),
         (Method::POST, p) if p == format!("{API}/register") => match json_body(req, 64 * 1024, rx.limits.json_body_timeout).await {
@@ -114,7 +114,7 @@ async fn handle(shared: Arc<Shared>, rx: Arc<Receiver>, ip: IpAddr, req: Request
         }
         (Method::POST, p) if p == format!("{API}/upload") => {
             let h = req.headers();
-            let chunked = h.get("transfer-encoding").and_then(|v| v.to_str().ok()).map_or(false, |v| v.to_lowercase().contains("chunked"));
+            let chunked = h.get("transfer-encoding").and_then(|v| v.to_str().ok()).is_some_and(|v| v.to_lowercase().contains("chunked"));
             let cl = h.get("content-length").and_then(|v| v.to_str().ok());
             if !chunked && cl.is_none() { return Ok(err(ProtocolError::new(411, "Content-Length mancante"))); }
             let length = if chunked { None } else { match cl.and_then(|v| v.parse::<u64>().ok()) { Some(l) => Some(l), None => return Ok(err(ProtocolError::new(400, "Content-Length non valido"))) } };

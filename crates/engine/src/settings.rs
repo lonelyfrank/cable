@@ -49,7 +49,7 @@ pub fn verify_pin_record(rec: &Value, pin: &str) -> bool {
 }
 
 fn valid_pin_record(r: &Value) -> bool {
-    r["salt"].is_string() && r["hash"].is_string() && r["it"].as_u64().map_or(false, |i| (1000..=10_000_000).contains(&i))
+    r["salt"].is_string() && r["hash"].is_string() && r["it"].as_u64().is_some_and(|i| (1000..=10_000_000).contains(&i))
 }
 
 fn clean_favorites(v: &Value) -> Value {
@@ -106,7 +106,7 @@ fn normalize(raw: &Value, p: &Paths) -> Map<String, Value> {
         for (k, v) in o {
             if let Some(nv) = validate(k, v) { d.insert(k.clone(), nv); }
         }
-        if o.get("migrato_da").map_or(false, Value::is_object) { d.insert("migrato_da".into(), o["migrato_da"].clone()); }
+        if o.get("migrato_da").is_some_and(Value::is_object) { d.insert("migrato_da".into(), o["migrato_da"].clone()); }
     }
     d
 }
@@ -282,7 +282,7 @@ impl Settings {
         let fp = fp.to_uppercase();
         let removed = {
             let mut d = self.d.lock().unwrap();
-            d.get_mut("preferiti").and_then(Value::as_object_mut).map_or(false, |f| f.remove(&fp).is_some())
+            d.get_mut("preferiti").and_then(Value::as_object_mut).is_some_and(|f| f.remove(&fp).is_some())
         };
         if removed { let _ = self.save(); }
     }

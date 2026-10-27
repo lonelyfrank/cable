@@ -229,10 +229,7 @@ async fn identity_mismatch_unreachable_and_hostile_clients() {
     raw.write_all(&[0u8, 255].repeat(50)).await.unwrap();
     let big = json!({"x": "y".repeat(9 * 1024 * 1024)});
     // il server risponde 413 e chiude senza leggere il corpo: il client vede 413 oppure l'errore di scrittura
-    match json_request(a.sh.client_tls().unwrap(), "127.0.0.1", b.port(), hyper::Method::POST, "/api/localsend/v2/prepare-upload", Some(&big), Duration::from_secs(20), None).await {
-        Ok((st, _, _)) => assert_eq!(st, 413),
-        Err(_) => {}
-    }
+    if let Ok((st, _, _)) = json_request(a.sh.client_tls().unwrap(), "127.0.0.1", b.port(), hyper::Method::POST, "/api/localsend/v2/prepare-upload", Some(&big), Duration::from_secs(20), None).await { assert_eq!(st, 413) }
     assert!(b.receiver.snapshot().0.as_array().unwrap().is_empty());          // nessuna richiesta creata
     let (st, v, fp) = json_request(a.sh.client_tls().unwrap(), "127.0.0.1", b.port(), hyper::Method::GET, "/api/localsend/v2/info", None, Duration::from_secs(5), None).await.unwrap();
     assert_eq!((st, fp), (200, b.sh.fingerprint()));

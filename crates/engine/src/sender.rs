@@ -193,7 +193,7 @@ impl Sender {
         if pin.is_empty() || pin.len() > 64 { return false; }
         let Some(job) = self.jobs.lock().unwrap().get(jid).cloned() else { return false };
         let tx = { let mut i = job.inner.lock().unwrap(); if i.state != "pin" { return false; } i.pin_tx.take() };
-        tx.map_or(false, |t| t.send(pin.to_string()).is_ok())
+        tx.is_some_and(|t| t.send(pin.to_string()).is_ok())
     }
 
     pub fn fp_di(&self, jid: &str) -> Option<String> { self.jobs.lock().unwrap().get(jid).map(|j| j.fp.clone()) }

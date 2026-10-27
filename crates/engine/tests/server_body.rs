@@ -75,7 +75,7 @@ async fn slow_drip_body_is_cut_at_the_deadline() {
     // un byte ogni 60 ms: ogni singolo intervallo è breve, il totale supera la scadenza
     let drip = tokio::spawn(async move { while wr.write_all(b" ").await.is_ok() { tokio::time::sleep(Duration::from_millis(60)).await; } });
     let mut buf = Vec::new();
-    let _ = tokio::time::timeout(Duration::from_secs(5), async { let mut tmp = [0u8; 512]; loop { match rd.read(&mut tmp).await { Ok(0) | Err(_) => break, Ok(n) => buf.extend_from_slice(&tmp[..n]) } } }).await.expect("il server doveva chiudere");
+    tokio::time::timeout(Duration::from_secs(5), async { let mut tmp = [0u8; 512]; loop { match rd.read(&mut tmp).await { Ok(0) | Err(_) => break, Ok(n) => buf.extend_from_slice(&tmp[..n]) } } }).await.expect("il server doveva chiudere");
     assert!(String::from_utf8_lossy(&buf).starts_with("HTTP/1.1 408"), "{}", String::from_utf8_lossy(&buf));
     assert!(t.elapsed() >= DEADLINE && t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
     drip.abort();

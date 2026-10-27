@@ -47,7 +47,7 @@ fn migrate_settings(p: &Paths, r: &mut Report) {
         if obj.get("nome_pc").and_then(Value::as_str) == Some(OLD_DEFAULT_NAME) {
             obj.insert("nome_pc".into(), json!(default_name()));          // solo il nome predefinito, mai uno scelto dall'utente
         }
-        if !obj.get("migrato_da").map_or(false, Value::is_object) {
+        if !obj.get("migrato_da").is_some_and(Value::is_object) {
             obj.insert("migrato_da".into(), json!({"versione": "pixel-hub-5", "quando": chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string()}));
         }
         // copia di sicurezza dell'originale accanto alle impostazioni di Cable, poi il file nuovo

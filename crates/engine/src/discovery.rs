@@ -239,7 +239,7 @@ impl Discovery {
         if info["announce"] == json!(true) {
             {
                 let mut lr = self.last_reply.lock().unwrap();
-                if lr.get(&ip).map_or(false, |t| t.elapsed() < Duration::from_secs(5)) { return; }
+                if lr.get(&ip).is_some_and(|t| t.elapsed() < Duration::from_secs(5)) { return; }
                 lr.insert(ip, Instant::now());
                 if lr.len() > 512 { lr.retain(|_, t| t.elapsed() < Duration::from_secs(5)); }
             }
@@ -313,7 +313,7 @@ impl Discovery {
                 _ if now != nets => { nets = now; self.rete_cambiata(NetEvent::Network); }
                 _ => {}
             }
-            if tick % 12 == 0 {                    // ogni minuto
+            if tick.is_multiple_of(12) {                    // ogni minuto
                 self.announce(true).await;
                 self.sh.registry.prune();
                 self.sh.bus.emit("dispositivi");

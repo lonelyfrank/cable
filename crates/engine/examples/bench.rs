@@ -3,7 +3,6 @@
 //! Uso: cargo run --release -p pixelhub-engine --example bench
 use pixelhub_engine::paths::Paths;
 use pixelhub_engine::Engine;
-use serde_json::Value;
 use std::time::{Duration, Instant};
 
 fn rss_kb(key: &str) -> u64 {
@@ -21,7 +20,7 @@ async fn send(a: &std::sync::Arc<Engine>, b: &std::sync::Arc<Engine>, paths: Vec
     let req = until(|| b.receiver.snapshot().0.as_array().unwrap().iter().find(|i| i["stato"] == "attesa").cloned(), 30).await;
     let ask = t0.elapsed();                                    // dall'invio alla richiesta visibile sul destinatario
     b.decidi(req["id"].as_str().unwrap(), None);
-    until(|| a.sender.snapshot().as_array().unwrap().iter().find(|j| j["id"] == Value::from(jid.clone()) && ["completato", "errore", "parziale"].contains(&j["stato"].as_str().unwrap())).cloned(), 600).await;
+    until(|| a.sender.snapshot().as_array().unwrap().iter().find(|j| j["id"] == jid.clone() && ["completato", "errore", "parziale"].contains(&j["stato"].as_str().unwrap())).cloned(), 600).await;
     (ask, t0.elapsed())
 }
 

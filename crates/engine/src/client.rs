@@ -115,6 +115,7 @@ pub fn json_req(host: &str, port: u16, method: Method, path: &str, body: Option<
 }
 
 /// Restituisce (stato, json, impronta effettiva).
+#[allow(clippy::too_many_arguments)]
 pub async fn json_request(tls: ClientTls, host: &str, port: u16, method: Method, path: &str, body: Option<&Value>,
                           t: Duration, expected: Option<&str>) -> Result<(u16, Option<Value>, String), ClientError> {
     let mut c = connect(tls, host, port, t, expected).await?;
@@ -143,7 +144,7 @@ pub async fn connect_any(make_tls: &(dyn Fn() -> Result<ClientTls, String> + Syn
             Ok(v) => return Ok(v),
             Err(e) => {
                 let rank = |e: &ClientError| match e { ClientError::Identity => 4, ClientError::Refused => 3, ClientError::Unreachable => 2, _ => 1 };
-                if worst.as_ref().map_or(true, |w| rank(&e) > rank(w)) { worst = Some(e); }
+                if worst.as_ref().is_none_or(|w| rank(&e) > rank(w)) { worst = Some(e); }
             }
         }
     }

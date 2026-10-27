@@ -45,6 +45,9 @@ fn generate() -> Result<(String, String), String> {
 }
 
 /// stato: "ok" | "invalida". Un'identità illeggibile NON viene rigenerata da sola.
+/// Configurazione TLS del client e impronta effettiva del certificato visto sulla connessione.
+pub type ClientTls = (Arc<ClientConfig>, Arc<Mutex<Option<String>>>);
+
 pub struct Identity {
     paths: Paths,
     pub cert_path: PathBuf,
@@ -137,7 +140,7 @@ impl Identity {
 
     /// Configurazione client che accetta qualunque certificato autofirmato e registra l'impronta vista:
     /// l'identità LocalSend è l'impronta SHA-256, confrontata dal chiamante con quella attesa.
-    pub fn client_config(&self) -> Result<(Arc<ClientConfig>, Arc<Mutex<Option<String>>>), String> {
+    pub fn client_config(&self) -> Result<ClientTls, String> {
         let seen = Arc::new(Mutex::new(None));
         let verifier = Arc::new(Recorder { seen: seen.clone(), provider: provider() });
         let key = self.key.as_ref().ok_or("identità non valida")?.clone_key();

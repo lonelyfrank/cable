@@ -68,8 +68,8 @@ pub async fn chiama(e: &Arc<Engine>, host: &dyn Host, metodo: &str, a: Value) ->
         "ripristina" => json!({"ok": true, "backup": e.ripristina_impostazioni()}),
         "rigenera_identita" => ok(e.rigenera_identita().await),
         "riprova_server" => ok(e.riprova_server().await),
-        "apri" => ok(consentito(e, s(&a, "path")).map_or(false, |p| desktop::apri(&p))),
-        "mostra" => ok(consentito(e, s(&a, "path")).map_or(false, |p| desktop::mostra(&p))),
+        "apri" => ok(consentito(e, s(&a, "path")).is_some_and(|p| desktop::apri(&p))),
+        "mostra" => ok(consentito(e, s(&a, "path")).is_some_and(|p| desktop::mostra(&p))),
         "apri_cartella" => {
             let k = if s(&a, "quale") == "foto" { "cartella_foto" } else { "cartella" };
             let p = PathBuf::from(e.sh.settings.str(k));

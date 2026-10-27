@@ -5,13 +5,12 @@ use crate::identity::Identity;
 use crate::paths::Paths;
 use crate::protocol::parse_peer_info;
 use crate::settings::Settings;
-use rustls::ClientConfig;
 use serde_json::{json, Value};
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicU16, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
-pub type ClientTls = (Arc<ClientConfig>, Arc<Mutex<Option<String>>>);
+pub use crate::identity::ClientTls;
 
 pub struct Shared {
     pub paths: Paths,

@@ -20,11 +20,11 @@ pub fn mostra(p: &Path) -> bool {
     let ok = Command::new("gdbus").args(["call", "--session", "--dest", "org.freedesktop.FileManager1", "--object-path",
         "/org/freedesktop/FileManager1", "--method", "org.freedesktop.FileManager1.ShowItems", &uri, ""])
         .stdout(Stdio::null()).stderr(Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
-    ok || p.parent().map_or(false, apri)
+    ok || p.parent().is_some_and(apri)
 }
 
 pub fn has_command(cmd: &str) -> bool {
-    std::env::var_os("PATH").map_or(false, |p| std::env::split_paths(&p).any(|d| d.join(cmd).is_file()))
+    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(cmd).is_file()))
 }
 
 fn exec_line() -> String {
@@ -84,7 +84,7 @@ pub fn processi_python() -> Vec<u32> {
         if pid == me { continue; }
         let Ok(raw) = std::fs::read(e.path().join("cmdline")) else { continue };
         let args: Vec<&[u8]> = raw.split(|b| *b == 0).collect();
-        let is_py = args.first().map_or(false, |a| a.ends_with(b"python3") || a.ends_with(b"python") || a.ends_with(b"/env"));
+        let is_py = args.first().is_some_and(|a| a.ends_with(b"python3") || a.ends_with(b"python") || a.ends_with(b"/env"));
         let hit = args.iter().take(5).any(|a| a.ends_with(b"/pixel-hub/pixel_hub.py") || *a == b"pixel_hub.py")
             || (args.windows(2).take(5).any(|w| w[0] == b"-m" && w[1] == b"pixelhub"));
         if is_py && hit { found.push(pid); }

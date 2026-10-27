@@ -111,7 +111,7 @@ impl Receiver {
         let now = Instant::now();
         {
             let mut st = self.st.lock().unwrap();
-            while st.pin_failures.front().map_or(false, |t| now.duration_since(*t) > self.limits.pin_window) { st.pin_failures.pop_front(); }
+            while st.pin_failures.front().is_some_and(|t| now.duration_since(*t) > self.limits.pin_window) { st.pin_failures.pop_front(); }
             if st.pin_failures.len() >= self.limits.pin_failures { return Err(ProtocolError::new(429, "troppi tentativi")); }
         }
         let Some(pin) = pin.filter(|p| !p.is_empty()) else { return Err(ProtocolError::new(401, "PIN richiesto")) };
@@ -280,7 +280,7 @@ impl Receiver {
             if inc.state != RState::Ricezione || matches!(f.state, FState::Ricezione | FState::Fatto) {
                 return Err(perr(409, "file già in ricezione o completato"));
             }
-            if content_length.map_or(false, |l| l != f.size) { return Err(perr(400, "lunghezza diversa da quella dichiarata")); }
+            if content_length.is_some_and(|l| l != f.size) { return Err(perr(400, "lunghezza diversa da quella dichiarata")); }
             f.state = FState::Ricezione; f.received = 0; f.error.clear();
             let out = (rid.clone(), inc.root.clone(), f.parts.clone(), f.size, f.sha256.clone(), inc.cancel.clone(), inc.progress.clone());
             inc.active += 1;
@@ -392,8 +392,9 @@ impl Receiver {
                 if inc.state.terminal() { return; }
                 let done = inc.done_count();
                 let mut state = state;
-                if state == RState::Completata && done < inc.selected.len() { state = RState::Parziale; }
-                else if matches!(state, RState::Annullata | RState::Scaduta | RState::Errore) && done > 0 { state = RState::Parziale; }
+                if (state == RState::Completata && done < inc.selected.len()) || (matches!(state, RState::Annullata | RState::Scaduta | RState::Errore) && done > 0) {
+                    state = RState::Parziale;
+                }
                 let error = if state == RState::Parziale && error.is_empty() { format!("Ricevuti {} file su {}", done, inc.selected.len()) } else { error.to_string() };
                 inc.state = state; inc.error = error.clone(); inc.finished = now_secs();
                 inc.cancel.cancel();
@@ -443,11 +444,10 @@ impl Receiver {
         let Ok(rd) = std::fs::read_dir(root) else { return };
         for e in rd.flatten() {
             let n = e.file_name().to_string_lossy().into_owned();
-            if (n.starts_with(".cable-") || n.starts_with(".pixelhub-")) && n.ends_with(".part") {
-                if e.metadata().and_then(|m| m.modified()).ok().and_then(|m| m.elapsed().ok()).map_or(false, |d| d > Duration::from_secs(86400)) {
+            if (n.starts_with(".cable-") || n.starts_with(".pixelhub-")) && n.ends_with(".part")
+                && e.metadata().and_then(|m| m.modified()).ok().and_then(|m| m.elapsed().ok()).is_some_and(|d| d > Duration::from_secs(86400)) {
                     let _ = std::fs::remove_file(e.path());
                 }
-            }
         }
     }
 

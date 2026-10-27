@@ -76,7 +76,7 @@ fn mostra(app: &AppHandle) {
 }
 
 fn visibile(app: &AppHandle) -> bool {
-    app.get_webview_window("main").map_or(false, |w| w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false))
+    app.get_webview_window("main").is_some_and(|w| w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false))
 }
 
 async fn push(app: &AppHandle) {
@@ -95,7 +95,7 @@ fn consenti_anteprime(app: &AppHandle, e: &Engine) {
 }
 
 fn notifica(app: &AppHandle, engine: &Arc<Engine>, kind: &str, d: Value) {
-    let attiva = app.get_webview_window("main").map_or(false, |w| w.is_focused().unwrap_or(false));
+    let attiva = app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false));
     if attiva && kind != "fine" { return; }
     use notify_rust::{Notification, Timeout, Urgency};
     let s = |k: &str| d[k].as_str().unwrap_or("").to_string();
@@ -255,7 +255,7 @@ fn main() {
             tauri::RunEvent::ExitRequested { api, code, .. } => {
                 // code == None: è stata chiusa l'ultima finestra (non un'uscita esplicita)
                 if code.is_none() {
-                    let resta = app.try_state::<AppState>().map_or(false, |st| st.engine.sh.settings.bool("background"));
+                    let resta = app.try_state::<AppState>().is_some_and(|st| st.engine.sh.settings.bool("background"));
                     if resta { api.prevent_exit(); }
                 }
             }

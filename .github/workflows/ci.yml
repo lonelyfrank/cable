@@ -1,0 +1,96 @@
+# Verifiche automatiche di Cable. Nessun job richiede sessione grafica, multicast reale o hardware:
+# quelle prove restano manuali (docs/CHECKLIST-MANUALE.md) o in un job separato a avvio manuale.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      ui_test:
+        description: "Esegui anche la prova della finestra reale sotto Xvfb (non bloccante)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  format:
+    name: Formattazione (rustfmt)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add rustfmt
+      - run: cargo fmt --all -- --check
+
+  engine:
+    name: Motore (clippy + test)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: engine-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      # il motore non dipende da GTK/WebKit: si compila senza librerie di sistema aggiuntive
+      - run: cargo clippy --locked -p pixelhub-engine --all-targets -- -D warnings
+      # test su loopback, con scadenze configurabili: nessuna dipendenza dalla rete di casa
+      - run: cargo test --locked -p pixelhub-engine
+
+  desktop:
+    name: Desktop (build + test + clippy)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add clippy
+      - name: Dipendenze GTK/WebKit
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev librsvg2-dev pkg-config build-essential
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: desktop-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - run: cargo build --locked -p cable
+      - run: cargo clippy --locked -p cable -- -D warnings
+      # test unitari del guscio (coda di apertura): non aprono finestre
+      - run: cargo test --locked -p cable
+
+  interop:
+    name: Interoperabilità Python ↔ Rust (loopback)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: tests/interop/run.sh
+
+  ui-test:
+    name: Finestra reale sotto Xvfb (manuale)
+    if: github.event_name == 'workflow_dispatch' && inputs.ui_test
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dipendenze
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev librsvg2-dev pkg-config build-essential xvfb dbus-x11
+      - run: cargo build --locked -p cable --features ui-test
+      - name: Scenario (bus D-Bus e HOME isolati)
+        run: |
+          export HOME="$(mktemp -d)" HUB_NO_MULTICAST=1 HUB_LS_PORT=53999 HUB_UI_SHOTS="$RUNNER_TEMP/shots"
+          xvfb-run -a dbus-run-session -- target/debug/cable

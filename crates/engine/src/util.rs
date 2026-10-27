@@ -46,7 +46,7 @@ pub fn truncate_name(name: &str) -> String {
 /// Scompone un nome ricevuto in componenti sicuri (niente '..', separatori, caratteri di controllo).
 pub fn safe_parts(name: &str) -> Vec<String> {
     let mut parts: Vec<String> = name
-        .split(|c| c == '/' || c == '\\')
+        .split(['/', '\\'])
         .map(|p| p.chars().filter(|c| !c.is_control()).collect::<String>().trim().to_string())
         .filter(|p| !p.is_empty() && p != "." && p != "..")
         .map(|p| truncate_name(&p))
@@ -146,10 +146,10 @@ impl Progress {
         let mut g = self.inner.lock().unwrap();
         g.total += n;
         let t = g.total;
-        if g.samples.back().map_or(true, |(ts, _)| now.duration_since(*ts) >= Duration::from_millis(250)) {
+        if g.samples.back().is_none_or(|(ts, _)| now.duration_since(*ts) >= Duration::from_millis(250)) {
             g.samples.push_back((now, t));
         }
-        while g.samples.front().map_or(false, |(ts, _)| now.duration_since(*ts) > Self::WINDOW) {
+        while g.samples.front().is_some_and(|(ts, _)| now.duration_since(*ts) > Self::WINDOW) {
             g.samples.pop_front();
         }
     }

@@ -217,7 +217,7 @@ impl Android {
         self.bus.emit("android");
     }
 
-    fn attivo(&self) -> bool { self.st.lock().unwrap().scrcpy.as_mut().map_or(false, |c| c.try_wait().ok().flatten().is_none()) }
+    fn attivo(&self) -> bool { self.st.lock().unwrap().scrcpy.as_mut().is_some_and(|c| c.try_wait().ok().flatten().is_none()) }
 
     pub fn ferma_schermo(&self) {
         let mut s = self.st.lock().unwrap();

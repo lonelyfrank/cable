@@ -5,6 +5,7 @@
 //! * `vicino`: annunciato o visto di recente (`NEARBY_SECONDS`), cioè presenza, non raggiungibilità;
 //! * `raggiungibile`: l'ultimo tentativo di connessione TLS verso uno dei suoi indirizzi è riuscito (o fallito);
 //! * `confermato`: l'utente ha verificato con il codice del wizard che l'impronta è del dispositivo che ha in mano.
+//!
 //! La stella (`preferito`) è una scorciatoia grafica: non implica nessuna delle quattro e non autorizza nulla.
 //!
 //! L'identità di un dispositivo è l'impronta SHA-256 del suo certificato. Nome, modello e indirizzo IP sono
@@ -113,7 +114,7 @@ impl Registry {
                 // impronta mai vista né ricordata, ma con il nome di un dispositivo ricordato che oggi non si vede
                 for (ofp, rec) in &fav {
                     if !same_name(rec["alias"].as_str().unwrap_or(""), &p.alias) { continue; }
-                    let old_near = m.get(ofp).map_or(false, |o| now - o.seen < NEARBY_SECONDS);
+                    let old_near = m.get(ofp).is_some_and(|o| now - o.seen < NEARBY_SECONDS);
                     if !old_near { new_change = Some((ofp.clone(), rec["confermato"] == json!(true))); break; }
                 }
             }
@@ -230,10 +231,10 @@ impl Registry {
         for d in m.values_mut() {
             for a in d.addrs.iter_mut() {
                 if a.manual { continue; }
-                if still_local.map_or(false, |f| f(&a.ip)) { continue; }
+                if still_local.is_some_and(|f| f(&a.ip)) { continue; }
                 a.seen = 0.0; a.confirmed = 0.0;
             }
-            if d.reach.map_or(false, |(ok, _)| !ok) || still_local.is_none() { d.reach = None; }
+            if d.reach.is_some_and(|(ok, _)| !ok) || still_local.is_none() { d.reach = None; }
             d.refresh_best();
         }
         drop(m);
@@ -285,9 +286,9 @@ impl Registry {
                 out.push(json!({"fp": d.fp, "alias": d.alias, "modello": d.model, "tipo": d.kind, "ip": d.ip, "port": d.port,
                     "indirizzi": d.addrs.len(),
                     "vicino": now - d.seen < NEARBY_SECONDS, "visto": d.seen,
-                    "ricordato": rec.is_some(), "preferito": rec.map_or(false, |r| r["preferito"] != json!(false)),
+                    "ricordato": rec.is_some(), "preferito": rec.is_some_and(|r| r["preferito"] != json!(false)),
                     "raggiungibile": reach(d.reach), "verificato": d.verified,
-                    "confermato": rec.map_or(false, |f| f["confermato"] == json!(true)),
+                    "confermato": rec.is_some_and(|f| f["confermato"] == json!(true)),
                     "origine": d.source}));
             }
         }
