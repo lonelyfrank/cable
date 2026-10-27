@@ -65,6 +65,7 @@ pub async fn chiama(e: &Arc<Engine>, host: &dyn Host, metodo: &str, a: Value) ->
             let r = e.imposta_pin(a["pin"].as_str());
             json!({"ok": r, "errore": if r { "" } else { "Il PIN deve avere da 4 a 32 caratteri" }})
         }
+        "aggiornamento_installa" => match e.avvia_aggiornamento() { Ok(()) => ok(true), Err(er) => json!({"ok": false, "errore": er}) },
         "aggiornamento_controlla" => { e.controlla_aggiornamenti().await; json!({"ok": true, "aggiornamento": e.aggiornamento_snapshot()}) }
         "ripristina" => json!({"ok": true, "backup": e.ripristina_impostazioni()}),
         "rigenera_identita" => ok(e.rigenera_identita().await),

@@ -107,7 +107,7 @@ fn notifica(app: &AppHandle, engine: &Arc<Engine>, kind: &str, d: Value) {
             _ => return,
         },
         "aggiornamento" => {
-            n.summary("Aggiornamento di Cable disponibile").body(&format!("Nel repository c'è una versione più recente ({}). Apri Cable per il comando di aggiornamento.", s("remoto"))).action("default", "Apri");
+            n.summary("Aggiornamento di Cable disponibile").body(&format!("Nel repository c'è una versione più recente ({}). Si può installare subito: Cable si riavvia da sola.", s("remoto"))).action("aggiorna", "Aggiorna e riavvia").action("default", "Apri");
         }
         "messaggio" => { n.summary(&format!("Messaggio da {}", s("alias"))).body(&s("testo").chars().take(120).collect::<String>()).action("default", "Apri");  }
         "invio" => {
@@ -125,6 +125,7 @@ fn notifica(app: &AppHandle, engine: &Arc<Engine>, kind: &str, d: Value) {
             "cartella" => { let _ = desktop::apri(std::path::Path::new(&engine.sh.settings.str("cartella"))); }
             "apri" => { let _ = desktop::apri(std::path::Path::new(&percorso)); }
             "mostra" => { let p = std::path::Path::new(&percorso); if percorso.is_empty() { let _ = desktop::apri(std::path::Path::new(&engine.sh.settings.str("cartella"))); } else { let _ = desktop::mostra(p); } }
+            "aggiorna" => { let e = engine.clone(); tauri::async_runtime::spawn(async move { let _ = e.avvia_aggiornamento(); }); }
             "default" => mostra(&app),
             _ => {}
         });

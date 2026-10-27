@@ -83,10 +83,13 @@ Fedora Atomic, Flatpak: **non verificati**. Se Pixel Hub 5.0 (o iPhone Hub) è a
 All'avvio (dopo 30 secondi) e poi ogni 6 ore Cable esegue `git ls-remote` sul repository
 (`https://github.com/lonelyfrank/cable.git`, ramo `main`) e confronta l'hash con il commit da cui è stato compilato. Non scarica
 nulla oltre a quell'hash e non invia dati tuoi (la richiesta è quella di un `git` qualunque verso GitHub). Se il ramo ha novità
-mostra un avviso nella finestra e una notifica (se attive) con il comando da lanciare: `cd <cartella dei sorgenti> && scripts/installa-utente.sh aggiorna`.
+mostra un avviso nella finestra e una notifica (se attive) con il pulsante **«Aggiorna e riavvia»**: Cable lancia, staccato da sé,
+`scripts/installa-utente.sh aggiorna --apri` (git pull, compilazione, installazione), che alla fine chiude Cable e la riapre con la nuova versione.
+Lo stesso comando da terminale (`scripts/installa-utente.sh aggiorna`) riavvia Cable se era aperta. Se la compilazione o il pull non riescono,
+Cable resta quella di prima e indica il registro (`~/.cache/cable/aggiornamento.log`). Un trasferimento in corso al momento del riavvio si interrompe.
 
 * Si spegne in *Impostazioni › Aggiornamenti*; lì c'è anche «Controlla ora».
-* Non aggiorna da solo: compilare e sostituire il programma resta un'azione tua.
+* Non aggiorna senza che tu lo chieda: serve il pulsante (o il comando).
 * Un commit locale non ancora pubblicato non conta come «aggiornamento». Se il controllo fallisce (rete assente) resta l'ultimo esito noto.
 * Senza git al momento della compilazione (tarball, pacchetto RPM) il controllo è disattivato: si aggiorna col gestore di pacchetti.
 

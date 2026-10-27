@@ -148,10 +148,17 @@ function saluto() {
 function avvisoLS() {
   const sv = S.server, ag = S.aggiornamento;
   let h = "";
-  if (ag && ag.attivo && ag.disponibile) {
+  if (ag && ag.in_corso) {
+    h += `<div class="vetro avviso"><div class="ic" style="background:var(--blu)">${I.ok}</div><div class="t"><b>Aggiornamento in corso…</b>
+      <small>Scarico le novità e compilo (da qualche decina di secondi a qualche minuto). Poi Cable si chiude e si riapre da sola.</small></div></div>`;
+  } else if (ag && ag.esito) {
+    h += `<div class="vetro avviso"><div class="ic">${I.attenzione}</div><div class="t"><b>Aggiornamento</b><small>${esc(ag.esito)}</small></div>
+      <button class="btn piccolo" data-azione="copiaAggiorna">Copia comando</button></div>`;
+  } else if (ag && ag.attivo && ag.disponibile) {
     h += `<div class="vetro avviso"><div class="ic" style="background:var(--blu)">${I.ok}</div><div class="t"><b>Aggiornamento di Cable disponibile</b>
-      <small>Nel repository c'è una versione più recente (${esc(ag.locale)} → ${esc(ag.remoto)}). Copia il comando, incollalo in un terminale e riapri Cable.</small></div>
-      <button class="btn piccolo primario" data-azione="copiaAggiorna">Copia comando</button></div>`;
+      <small>Nel repository c'è una versione più recente (${esc(ag.locale)} → ${esc(ag.remoto)}). Cable la scarica, la compila e si riavvia da sola.</small></div>
+      <button class="btn piccolo" data-azione="copiaAggiorna">Copia comando</button>
+      <button class="btn piccolo primario" data-azione="installaAggiorna">Aggiorna e riavvia</button></div>`;
   }
   if (S.identita.stato !== "ok") {
     h += `<div class="vetro avviso"><div class="ic">${I.attenzione}</div><div class="t"><b>Identità non valida</b>
@@ -505,6 +512,12 @@ const AZ = {
   async schermo() { const on = S.schermo.attivo; const r = await api("schermo", { azione: on ? "ferma" : "avvia" }); if (!on && !r.ok) toast(`Non riesco ad avviare ${S.schermo.modo === "iphone" ? "UxPlay" : "scrcpy"}`, "warn"); },
   vai(e) { vai(e.dataset.p); },
   async copiaAggiorna() { await copiaTesto(S.aggiornamento.comando); toast("Comando copiato: incollalo in un terminale"); },
+  async installaAggiorna() {
+    if (!await chiedi({ titolo: "Aggiornare e riavviare Cable?", ok: "Aggiorna e riavvia",
+      testo: "Scarica le novità dal repository, compila e reinstalla. Al termine Cable si chiude e si riapre: un trasferimento in corso in quel momento verrebbe interrotto. Se la compilazione non riesce, resta la versione attuale." })) return;
+    const r = await api("aggiornamento_installa");
+    toast(r.ok ? "Aggiornamento avviato" : r.errore, r.ok ? "ok" : "warn");
+  },
   async controllaAgg() {
     const r = await api("aggiornamento_controlla"), a = r.aggiornamento || {};
     toast(a.errore ? "Controllo non riuscito: " + a.errore : a.disponibile ? "Aggiornamento disponibile" : "Cable è aggiornato", a.errore ? "warn" : "ok");

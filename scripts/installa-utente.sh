@@ -2,6 +2,8 @@
 # Installazione per l'utente corrente (senza RPM/DEB, senza sudo): tutto sotto ~/.local.
 #   scripts/installa-utente.sh           compila e installa binario, icone, lanciatore e voce per Nautilus
 #   scripts/installa-utente.sh aggiorna  scarica le novità del repository (git pull) e reinstalla
+#   … aggiorna --apri                     come sopra, poi riapre Cable con la finestra (lo usa il pulsante «Aggiorna e riavvia»)
+# Se Cable era aperto, dopo un'installazione riuscita viene riavviato da solo; se la compilazione fallisce resta quello di prima.
 #   scripts/installa-utente.sh rimuovi   rimuove Cable e ripristina lanciatore/avvio automatico di Pixel Hub (se salvati)
 # Per compilare servono (da installare tu, una volta; lo script ricorda quelli giusti se la compilazione fallisce):
 #   Ubuntu/Debian: sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev \
@@ -9,6 +11,8 @@
 #   Fedora:        sudo dnf install cargo rust gcc dbus-devel gtk3-devel webkit2gtk4.1-devel libsoup3-devel javascriptcoregtk4.1-devel librsvg2-devel
 # Per eseguire: GTK 3, WebKitGTK 4.1, libsoup 3 (già presenti su Fedora Workstation e Ubuntu desktop). Facoltativi: adb, scrcpy (solo Android).
 set -euo pipefail
+# Rust installato con rustup: dal menu delle applicazioni ~/.cargo/bin non è nel PATH
+[[ -d "$HOME/.cargo/bin" ]] && PATH="$HOME/.cargo/bin:$PATH"
 
 dipendenze() {
   local id=""; [[ -r /etc/os-release ]] && id="$(. /etc/os-release; echo "${ID:-} ${ID_LIKE:-}")"
@@ -35,6 +39,7 @@ AUTO="$HOME/.config/autostart/$ID.desktop"
 OLD_AUTO="$HOME/.config/autostart/$OLD_ID.desktop"
 
 MODO="${1:-installa}"
+APRI=""; [[ "${2:-}" == --apri ]] && APRI=1
 if [[ "$MODO" == aggiorna ]]; then
   (( EUID == 0 )) && { echo "Esegui come utente normale, senza sudo."; exit 1; }
   [[ -d "$SRC/.git" ]] || { echo "Questa copia non è un clone git: non posso aggiornarla da qui."; exit 1; }
@@ -57,6 +62,12 @@ case "$MODO" in
       (cd "$SRC" && cargo build --release -p cable) || { echo; dipendenze; exit 1; }
     elif [[ ! -x "$SRC/target/release/cable" ]]; then
       echo "cargo non trovato."; dipendenze; exit 1
+    fi
+    # come riavviare dopo: con la finestra se richiesto o se era aperto così, altrimenti di nuovo in background
+    RIAVVIA=""
+    if pid=$(pgrep -xo cable); then
+      RIAVVIA=finestra
+      [[ -z "$APRI" ]] && tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q -- --background && RIAVVIA=background
     fi
     mkdir -p "$APPS" "$BAK" "$(dirname "$BIN")"
     # il lanciatore di Pixel Hub si salva (non si cancella) e poi si toglie, per non avere due icone
@@ -83,7 +94,15 @@ SH
     update-desktop-database "$APPS" 2>/dev/null || true
     gtk-update-icon-cache -q "$ICONS" 2>/dev/null || true
     echo "Installato in $BIN. Cerca «Cable» nel menu delle applicazioni."
-    pgrep -x cable >/dev/null && echo "Cable è già aperto: chiudilo (Impostazioni › Esci) e riaprilo per usare la versione appena installata."
+    if [[ -n "$RIAVVIA" ]]; then
+      pkill -x cable || true
+      for _ in $(seq 40); do pgrep -x cable >/dev/null || break; sleep 0.25; done
+      pkill -9 -x cable 2>/dev/null || true
+      if [[ "$RIAVVIA" == background ]]; then setsid "$BIN" --background >/dev/null 2>&1 < /dev/null &
+      else setsid "$BIN" >/dev/null 2>&1 < /dev/null & fi
+      disown || true
+      echo "Cable riavviato con la nuova versione."
+    fi
     echo "In Nautilus: tasto destro su file › Scripts › Invia con Cable."
     echo "Le impostazioni e l'identità di Pixel Hub (~/.config/pixel-hub, ~/.local/share/pixel-hub) non vengono modificate:"
     echo "al primo avvio Cable ne importa una copia." ;;

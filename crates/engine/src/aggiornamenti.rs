@@ -25,6 +25,9 @@ pub struct Stato {
     pub disponibile: bool,
     pub errore: String,
     avvisato: String,
+    /// `installa-utente.sh aggiorna` lanciato da qui; se finisce bene Cable viene riavviato e questo stato sparisce con lui
+    figlio: Option<std::process::Child>,
+    esito: String,
 }
 
 /// Primo hash di 40 cifre esadecimali nell'output di `git ls-remote`.
@@ -32,6 +35,8 @@ pub fn primo_hash(out: &str) -> Option<String> {
     let h = out.split_whitespace().next()?;
     (h.len() == 40 && h.bytes().all(|b| b.is_ascii_hexdigit())).then(|| h.to_ascii_lowercase())
 }
+
+fn script() -> std::path::PathBuf { std::path::Path::new(SORGENTI).join("scripts/installa-utente.sh") }
 
 /// Comando da eseguire per aggiornare, mostrato all'utente.
 pub fn comando() -> String { format!("cd '{SORGENTI}' && scripts/installa-utente.sh aggiorna") }
@@ -71,9 +76,48 @@ impl Engine {
         self.sh.bus.emit("aggiornamento");
     }
 
+    /// «Aggiorna e riavvia»: git pull, compilazione e installazione in un processo staccato da Cable (lo script, se va
+    /// tutto bene, chiude questa istanza e apre la nuova). Se fallisce Cable resta com'è e mostra dove leggere il motivo.
+    pub fn avvia_aggiornamento(self: &Arc<Self>) -> Result<(), String> {
+        use std::os::unix::process::CommandExt;
+        if COMMIT.is_empty() || !script().is_file() { return Err("Questa copia non è stata compilata da un clone git: aggiornala con il gestore di pacchetti.".into()); }
+        let mut s = self.agg.lock().unwrap();
+        if s.figlio.as_mut().map_or(false, |c| c.try_wait().ok().flatten().is_none()) { return Ok(()); }
+        let log = self.log_aggiornamento();
+        if let Some(d) = log.parent() { let _ = std::fs::create_dir_all(d); }
+        let f = std::fs::File::create(&log).map_err(|e| format!("Non riesco a scrivere {}: {e}", log.display()))?;
+        let f2 = f.try_clone().map_err(|e| e.to_string())?;
+        let c = std::process::Command::new("bash").arg(script()).args(["aggiorna", "--apri"]).current_dir(SORGENTI)
+            .stdin(std::process::Stdio::null()).stdout(f).stderr(f2).env("GIT_TERMINAL_PROMPT", "0")
+            .process_group(0)                 // non riceve i segnali destinati a Cable: sopravvive al riavvio che fa lui stesso
+            .spawn().map_err(|e| format!("Non riesco ad avviare l'aggiornamento: {e}"))?;
+        s.figlio = Some(c);
+        s.esito.clear();
+        drop(s);
+        self.sh.bus.emit("aggiornamento");
+        // se lo script fallisce Cable resta in vita: la pagina deve saperlo senza aspettare altri eventi
+        let me = self.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                let finito = me.agg.lock().unwrap().figlio.as_mut().map_or(true, |c| c.try_wait().ok().flatten().is_some());
+                if finito { me.sh.bus.emit("aggiornamento"); return; }
+            }
+        });
+        Ok(())
+    }
+
+    fn log_aggiornamento(&self) -> std::path::PathBuf { self.sh.paths.cache.join("aggiornamento.log") }
+
     pub fn aggiornamento_snapshot(&self) -> Value {
-        let s = self.agg.lock().unwrap();
-        json!({"verificabile": !COMMIT.is_empty(), "attivo": self.sh.settings.bool("controlla_aggiornamenti"),
+        let mut s = self.agg.lock().unwrap();
+        if let Some(st) = s.figlio.as_mut().and_then(|c| c.try_wait().ok().flatten()) {
+            s.figlio = None;
+            // uscito con successo ma Cable è ancora questo: lo script non l'ha riavviato (non dovrebbe succedere)
+            s.esito = if st.success() { "Installato: chiudi e riapri Cable per usare la nuova versione.".into() }
+                      else { format!("Aggiornamento non riuscito: Cable resta alla versione attuale. Dettagli in {}", self.log_aggiornamento().display()) };
+        }
+        json!({"in_corso": s.figlio.is_some(), "esito": s.esito, "verificabile": !COMMIT.is_empty(), "attivo": self.sh.settings.bool("controlla_aggiornamenti"),
                "disponibile": s.disponibile, "remoto": s.remoto.get(..7).unwrap_or(""), "locale": COMMIT.get(..7).unwrap_or(""),
                "errore": s.errore, "controllato": s.controllato, "comando": comando()})
     }
